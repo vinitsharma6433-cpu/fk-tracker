@@ -1,0 +1,1180 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#1b2430">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" href="icon-192.png">
+  <link rel="apple-touch-icon" href="icon-192.png">
+<title>FK Profit Tracker — Nav Durga Sports</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<style>
+  :root{
+    --ink:#1b2430;
+    --paper:#f6f7f4;
+    --card:#ffffff;
+    --seam:#b3282d;
+    --seam-dark:#8f1f23;
+    --green:#1e6b45;
+    --green-soft:#e6f2ec;
+    --red-soft:#fbeaea;
+    --line:#e3e5e0;
+    --muted:#6b7280;
+    --radius:14px;
+    font-size:16px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+  body{
+    font-family:-apple-system,'Segoe UI',Roboto,'Noto Sans Devanagari',sans-serif;
+    background:var(--paper);color:var(--ink);
+    min-height:100vh;padding-bottom:84px;
+  }
+  header{
+    background:var(--ink);color:#fff;padding:14px 16px 12px;
+    position:sticky;top:0;z-index:50;
+  }
+  header .brand{display:flex;align-items:center;gap:10px}
+  .sync-btn{
+    margin-left:auto;background:rgba(255,255,255,.12);border:none;color:#fff;
+    border-radius:10px;padding:8px 12px;font-size:.72rem;font-weight:700;cursor:pointer;font-family:inherit;
+    display:flex;align-items:center;gap:6px;
+  }
+  .sync-dot{width:8px;height:8px;border-radius:50%;background:#8a94a3;flex:none}
+  .sync-dot.on{background:#4ade80}
+  .sync-dot.err{background:#f87171}
+  @keyframes pulse{50%{opacity:.35}}
+  .sync-dot.busy{background:#facc15;animation:pulse 1s infinite}
+  .ball{
+    width:34px;height:34px;border-radius:50%;flex:none;
+    background:radial-gradient(circle at 30% 30%, #d6403f, var(--seam-dark));
+    position:relative;box-shadow:inset -3px -3px 6px rgba(0,0,0,.35);
+  }
+  .ball::after{
+    content:'';position:absolute;top:4px;bottom:4px;left:50%;width:0;
+    border-left:2px dashed rgba(255,255,255,.85);transform:translateX(-50%) rotate(18deg);
+  }
+  header h1{font-size:1.05rem;font-weight:700;letter-spacing:.2px}
+  header .sub{font-size:.72rem;color:#9aa3ad;margin-top:1px}
+  nav{
+    position:fixed;bottom:0;left:0;right:0;z-index:60;
+    background:#fff;border-top:1px solid var(--line);
+    display:flex;padding-bottom:env(safe-area-inset-bottom);
+  }
+  nav button{
+    flex:1;background:none;border:none;padding:10px 4px 8px;
+    font-size:.68rem;color:var(--muted);cursor:pointer;font-family:inherit;
+    display:flex;flex-direction:column;align-items:center;gap:3px;
+  }
+  nav button .ico{font-size:1.25rem;line-height:1}
+  nav button.active{color:var(--seam);font-weight:700}
+  main{padding:16px 14px 24px;max-width:560px;margin:0 auto}
+  .page{display:none}
+  .page.show{display:block;animation:fade .18s ease}
+  @keyframes fade{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+  .card{
+    background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+    padding:16px;margin-bottom:14px;
+  }
+  h2{font-size:.95rem;margin-bottom:10px}
+  .hint{font-size:.78rem;color:var(--muted);line-height:1.45}
+  .scan-btn{
+    display:flex;align-items:center;justify-content:center;gap:10px;width:100%;
+    background:var(--seam);color:#fff;border:none;border-radius:var(--radius);
+    padding:18px;font-size:1.05rem;font-weight:700;cursor:pointer;font-family:inherit;
+    box-shadow:0 4px 14px rgba(179,40,45,.3);
+  }
+  .scan-btn:disabled{opacity:.75}
+  .scan-btn:active{transform:scale(.98)}
+  .scan-btn.secondary{background:#fff;color:var(--ink);border:1.5px dashed var(--line);box-shadow:none;font-weight:600;font-size:.9rem;padding:13px;margin-top:10px}
+  .spinner{width:18px;height:18px;border:2.5px solid rgba(255,255,255,.35);border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite;flex:none}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .keybox{
+    background:#fff6e0;border:1px solid #eadfb8;border-radius:var(--radius);
+    padding:14px;margin-bottom:14px;font-size:.85rem;line-height:1.5;
+  }
+  .queue-item{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--line);font-size:.85rem}
+  .queue-item:last-child{border-bottom:none}
+  .q-thumb{width:40px;height:40px;border-radius:8px;object-fit:cover;flex:none;border:1px solid var(--line)}
+  .q-status{margin-left:auto;font-size:.75rem;font-weight:700}
+  .q-wait{color:var(--muted)} .q-run{color:#b8860b} .q-ok{color:var(--green)} .q-err{color:var(--seam)}
+  label{display:block;font-size:.74rem;font-weight:700;color:var(--muted);margin:11px 0 4px;text-transform:uppercase;letter-spacing:.4px}
+  input,select{
+    width:100%;padding:11px 12px;border:1.5px solid var(--line);border-radius:10px;
+    font-size:.95rem;font-family:inherit;background:#fff;color:var(--ink);
+  }
+  input:focus,select:focus{outline:none;border-color:var(--seam)}
+  .row2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .profit-preview{
+    margin-top:14px;padding:12px;border-radius:10px;text-align:center;
+    font-size:.92rem;font-weight:700;
+  }
+  .p-pos{background:var(--green-soft);color:var(--green)}
+  .p-neg{background:var(--red-soft);color:var(--seam)}
+  .btn{
+    width:100%;padding:14px;border:none;border-radius:12px;font-size:.98rem;
+    font-weight:700;cursor:pointer;font-family:inherit;margin-top:12px;
+  }
+  .btn-save{background:var(--green);color:#fff}
+  .btn-ghost{background:none;color:var(--muted);font-weight:600;font-size:.85rem;padding:10px}
+  .day-head{font-size:.75rem;font-weight:700;color:var(--muted);margin:16px 2px 6px;letter-spacing:.3px}
+  .entry{
+    background:#fff;border:1px solid var(--line);border-radius:12px;
+    padding:12px 14px;margin-bottom:8px;display:flex;gap:10px;align-items:flex-start;
+  }
+  .entry .info{flex:1;min-width:0}
+  .entry .name{font-size:.9rem;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .entry .meta{font-size:.73rem;color:var(--muted);margin-top:3px}
+  .entry .nums{text-align:right;flex:none}
+  .entry .sale{font-size:.92rem;font-weight:700}
+  .entry .pft{font-size:.75rem;font-weight:700;margin-top:3px}
+  .pft.pos{color:var(--green)} .pft.neg{color:var(--seam)}
+  .entry .del{background:none;border:none;color:#c3c8cf;font-size:1.05rem;cursor:pointer;padding:2px 4px;flex:none}
+  .entry .edt{background:none;border:none;color:#8a94a3;font-size:1rem;cursor:pointer;padding:2px 4px;flex:none}
+  .entry.dup{border-color:var(--seam);background:#fff7f7}
+  .chip-dup{display:inline-block;background:var(--seam);color:#fff;font-size:.62rem;font-weight:800;letter-spacing:.5px;border-radius:6px;padding:2px 7px;margin-left:6px;vertical-align:middle}
+  .day-head{display:flex;align-items:center;justify-content:space-between}
+  .day-pdf{background:#fff;border:1px solid var(--line);border-radius:8px;padding:4px 10px;font-size:.7rem;font-weight:700;color:var(--ink);cursor:pointer;font-family:inherit}
+  .empty{text-align:center;padding:44px 20px;color:var(--muted);font-size:.88rem;line-height:1.6}
+  .empty .big{font-size:2.4rem;margin-bottom:8px}
+  .month-nav{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
+  .month-nav button{background:#fff;border:1px solid var(--line);border-radius:10px;width:40px;height:40px;font-size:1.1rem;cursor:pointer;color:var(--ink)}
+  .month-nav .mname{font-weight:800;font-size:1.02rem}
+  .stat-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .stat{background:#fff;border:1px solid var(--line);border-radius:12px;padding:13px 14px}
+  .stat .lbl{font-size:.7rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px}
+  .stat .val{font-size:1.28rem;font-weight:800;margin-top:4px;font-variant-numeric:tabular-nums}
+  .stat.wide{grid-column:1/-1}
+  .stat.hero{background:var(--ink);border-color:var(--ink);color:#fff}
+  .stat.hero .lbl{color:#9aa3ad}
+  .partner-row{display:flex;justify-content:space-between;align-items:center;padding:12px 0;border-bottom:1px solid var(--line);font-size:.92rem}
+  .partner-row:last-child{border-bottom:none}
+  .partner-row b{font-variant-numeric:tabular-nums}
+  .kharcha-list .partner-row{font-size:.85rem}
+  .mini-add{display:flex;gap:8px;margin-top:10px}
+  .mini-add input{flex:1;padding:9px 10px;font-size:.85rem}
+  .mini-add button{background:var(--ink);color:#fff;border:none;border-radius:10px;padding:0 16px;font-weight:700;cursor:pointer;font-family:inherit}
+  .cost-row{display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--line)}
+  .cost-row:last-child{border-bottom:none}
+  .cost-row .pn{flex:1;font-size:.85rem;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .cost-row input{width:90px;padding:8px;font-size:.85rem;text-align:right}
+  .toast{
+    position:fixed;left:50%;bottom:96px;transform:translateX(-50%) translateY(20px);
+    background:var(--ink);color:#fff;padding:11px 20px;border-radius:24px;
+    font-size:.85rem;font-weight:600;opacity:0;pointer-events:none;transition:.25s;z-index:100;
+    max-width:88vw;text-align:center;
+  }
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  .badge-dup{background:#fff6e0;color:#9a6b00;border-radius:8px;padding:8px 10px;font-size:.78rem;font-weight:600;margin-top:8px}
+  .dup-alert{background:var(--seam);color:#fff;border-radius:12px;padding:16px 14px;margin-top:8px;text-align:center;box-shadow:0 4px 14px rgba(179,40,45,.4)}
+  .dup-alert .big{font-size:1.3rem;font-weight:900;letter-spacing:.5px}
+  .dup-alert .sm{font-size:.8rem;margin-top:6px;opacity:.95;line-height:1.4}
+  /* live scanner */
+  #liveBox{display:none;position:fixed;inset:0;background:#000;z-index:200;flex-direction:column}
+  #liveBox video{flex:1;width:100%;object-fit:cover}
+  .live-frame{position:absolute;top:10%;left:6%;right:6%;bottom:26%;border:3px dashed rgba(255,255,255,.85);border-radius:14px;pointer-events:none}
+  .live-hint{position:absolute;top:4%;left:0;right:0;text-align:center;color:#fff;font-size:.85rem;font-weight:600;text-shadow:0 1px 4px #000}
+  .live-bar{position:absolute;bottom:0;left:0;right:0;padding:18px 16px calc(18px + env(safe-area-inset-bottom));display:flex;align-items:center;gap:14px;background:linear-gradient(transparent, rgba(0,0,0,.75))}
+  .live-shot{flex:1;background:var(--seam);color:#fff;border:none;border-radius:16px;padding:18px;font-size:1.15rem;font-weight:800;font-family:inherit;box-shadow:0 4px 16px rgba(179,40,45,.5)}
+  .live-close{background:rgba(255,255,255,.18);color:#fff;border:none;border-radius:14px;padding:16px 18px;font-size:1rem;font-family:inherit;font-weight:700}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand">
+    <div class="ball"></div>
+    <div>
+      <h1>FK Profit Tracker <span style="font-size:.6rem;background:var(--seam);padding:2px 6px;border-radius:6px;vertical-align:middle">PRO</span></h1>
+      <div class="sub">M/s Nav Durga Sports · DASH X</div>
+    </div>
+    <button class="sync-btn" onclick="manualSync()"><span class="sync-dot" id="syncDot"></span><span id="syncTxt">Sync</span></button>
+  </div>
+</header>
+
+<main>
+
+  <!-- ============ SCAN PAGE ============ -->
+  <section class="page show" id="pg-scan">
+    <div class="keybox" id="keyWarn" style="display:none">
+      🔑 <b>Pehle Gemini API key daalo</b> — Settings tab me jaake. Key free me milti hai: <b>aistudio.google.com/apikey</b> pe jao → "Create API key" → copy karke Settings me paste karo. Ek hi baar karna hai.
+    </div>
+    <button class="scan-btn" id="btnScan" onclick="startScan('cam')">
+      <span id="scanIco">📷</span> <span id="scanTxt">Camera se bill ka photo lo</span>
+    </button>
+    <button class="scan-btn" style="background:var(--ink);box-shadow:0 4px 14px rgba(27,36,48,.25);margin-top:10px" onclick="startScan('gal')">
+      🖼️ Gallery se photo chuno (ek saath 25–30)
+    </button>
+    <input type="file" id="camIn" accept="image/*" capture="environment" hidden onchange="handleFiles(this.files,'cam')">
+    <input type="file" id="fileIn" accept="image/*" multiple hidden onchange="handleFiles(this.files,'gal')">
+    <button class="scan-btn secondary" onclick="openManual()">✍️ Manual entry (bina photo)</button>
+    <p class="hint" style="margin-top:12px">Ek saath 25–30 parchi ke photo select kar sakte ho — sab line se scan hongi. Photo seedha aur roshni me lo to result best aata hai.</p>
+
+    <div class="card" id="queueCard" style="display:none;margin-top:14px">
+      <h2>Scan queue</h2>
+      <div id="queueList"></div>
+    </div>
+
+    <div id="lastSaved" style="display:none;margin-top:14px" class="card">
+      <h2>✅ Entry apne aap chadh gayi</h2>
+      <p id="lastSavedTxt" style="font-size:.9rem;font-weight:600"></p>
+      <p class="hint" style="margin-top:4px">Galat lagi ho to Entries tab me ✎ se theek kar lena.</p>
+      <button class="btn btn-save" onclick="startScan('cam')">📷 Agla bill scan karo</button>
+    </div>
+
+    <div class="card" id="reviewCard" style="display:none;margin-top:14px">
+      <h2 id="reviewTitle">Entry check karo</h2>
+      <div id="dupWarn" class="dup-alert" style="display:none">
+        <div class="big">🔴 DOUBLE ORDER!</div>
+        <div class="sm">Ye Order ID pehle se chadha hua hai.<br>Save MAT karo — Cancel dabao. Chadh gaya to Entries me laal dikhega, ✕ se delete kar dena.</div>
+      </div>
+      <label>Order ID</label>
+      <input id="fOrder" placeholder="OD...">
+      <div class="row2">
+        <div><label>Date</label><input id="fDate" type="date"></div>
+        <div><label>Qty</label><input id="fQty" type="number" min="1" value="1" oninput="calcPreview()"></div>
+      </div>
+      <label>Product</label>
+      <input id="fProduct" placeholder="DASH X pack of 3" oninput="autoCost()">
+      <div class="row2">
+        <div><label>Bill price ₹</label><input id="fSale" type="number" step="0.01" oninput="calcPreview()"></div>
+        <div><label>Lagat ₹ (total, is order ki)</label><input id="fCost" type="number" step="0.01" oninput="calcPreview()"></div>
+      </div>
+      <p class="hint" style="margin-top:6px">Lagat = maal + packing + Flipkart fees jo bhi is order pe laga. Ek baar product ki lagat daal do, agli baar khud bhar jayegi.</p>
+      <div class="profit-preview p-pos" id="profitPrev">Profit: ₹0</div>
+      <button class="btn btn-save" onclick="saveEntry()">✅ Entry chadhao</button>
+      <button class="btn btn-ghost" onclick="cancelReview()">Cancel</button>
+    </div>
+  </section>
+
+  <!-- ============ ENTRIES PAGE ============ -->
+  <section class="page" id="pg-entries">
+    <div id="entriesList"></div>
+  </section>
+
+  <!-- ============ HISAB PAGE ============ -->
+  <section class="page" id="pg-hisab">
+    <div class="month-nav">
+      <button onclick="shiftMonth(-1)">‹</button>
+      <div class="mname" id="monthName"></div>
+      <button onclick="shiftMonth(1)">›</button>
+    </div>
+    <div class="stat-grid" id="statGrid"></div>
+    <div id="dateMismatch"></div>
+    <button class="btn" style="background:var(--ink);color:#fff" onclick="monthPDF()">📄 Mahine ki PDF banao · WhatsApp share</button>
+    <div class="card" style="margin-top:14px">
+      <h2>🤝 Partner batwara</h2>
+      <div id="partnerSplit"></div>
+    </div>
+    <div class="card">
+      <h2>➖ Katauti / Kharcha (Tax, Return, etc.)</h2>
+      <p class="hint">Tax, return shipping, ads — jo bhi mahine me less karna hai yahan daalo. Net profit me se pehle katega, phir partner batwara hoga. PDF me bhi alag-alag dikhega.</p>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px">
+        <button class="day-pdf" onclick="quickK('Tax / GST')">+ Tax/GST</button>
+        <button class="day-pdf" onclick="quickK('Return shipping charge')">+ Return shipping</button>
+        <button class="day-pdf" onclick="quickK('Packing kharcha')">+ Packing</button>
+        <button class="day-pdf" onclick="quickK('Ads kharcha')">+ Ads</button>
+      </div>
+      <div class="kharcha-list" id="kharchaList"></div>
+      <div class="mini-add">
+        <input id="kName" placeholder="Katauti ka naam">
+        <input id="kAmt" type="number" placeholder="₹" style="max-width:90px">
+        <button onclick="addKharcha()">+</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ SETTINGS PAGE ============ -->
+  <section class="page" id="pg-set">
+    <div class="card">
+      <h2>🔄 Partner Sync (2 phone, ek hisab)</h2>
+      <p class="hint"><b>✅ Sync pehle se chalu hai — kuch daalne ki zaroorat nahi!</b> Ye app aur partner ka app khud jud jate hain, entries dono me live aati hain. Neeche ke khane sirf tab chhedo jab Claude bole. Bas Gemini key (neeche) daal do aur scan shuru karo.</p>
+      <label>Firebase Database URL</label>
+      <input id="sFbUrl" placeholder="https://apna-project-default-rtdb.firebaseio.com">
+      <label>Shop code (dono phone me bilkul same, lamba rakho)</label>
+      <input id="sFbCode" type="password" placeholder="jaise: navdurga-dashx-9271">
+      <button class="btn btn-save" onclick="saveFb()">Save + Sync test</button>
+      <p class="hint" id="fbStatus" style="margin-top:8px">✅ Sync chalu hai (built-in).</p>
+    </div>
+    <div class="card">
+      <h2>🔑 Gemini API Key</h2>
+      <p class="hint">Free key: <b>aistudio.google.com/apikey</b> → Create API key → yahan paste karo. Key sirf tumhare phone me save hoti hai, kahin bahar nahi jaati (sirf Google ke scan server ko). <b>GitHub wali code file me key kabhi mat likhna.</b></p>
+      <label>API Key</label>
+      <input id="sKey" type="password" placeholder="AIza...">
+      <button class="btn btn-save" onclick="saveKey()">Key save karo</button>
+      <button class="btn" style="background:var(--ink);color:#fff" onclick="testKey()">🧪 Key test karo</button>
+      <p class="hint" id="keyStatus" style="margin-top:8px"></p>
+    </div>
+    <div class="card">
+      <h2>🤝 Partnership</h2>
+      <label>Partner 1 ka naam</label>
+      <input id="sP1" placeholder="Vineet">
+      <label>Partner 2 ka naam</label>
+      <input id="sP2" placeholder="Partner">
+      <label>Partner 1 ka hissa (%)</label>
+      <input id="sRatio" type="number" min="0" max="100" value="50">
+      <p class="hint" style="margin-top:6px">50 matlab barabar batwara (50–50).</p>
+      <button class="btn btn-save" onclick="saveSettings()">Save</button>
+    </div>
+    <div class="card">
+      <h2>🏷️ Product lagat list</h2>
+      <p class="hint">Per-piece lagat. Scan hote hi product match hua to lagat khud bhar jayegi.</p>
+      <div id="costList" style="margin-top:8px"><p class="hint">Abhi koi product saved nahi.</p></div>
+      <div class="mini-add">
+        <input id="npName" placeholder="Product ka naam">
+        <input id="npCost" type="number" placeholder="₹/pc" style="max-width:90px">
+        <button onclick="addProduct()">+</button>
+      </div>
+    </div>
+    <div class="card">
+      <h2>💾 Data backup</h2>
+      <button class="btn" style="background:var(--ink);color:#fff;margin-top:0" onclick="exportData()">⬇️ Backup download (JSON)</button>
+      <label style="margin-top:14px">Backup wapas daalo (restore)</label>
+      <input type="file" accept=".json" onchange="importData(this.files[0])">
+      <p class="hint" style="margin-top:8px">Data phone ke browser me save rehta hai. Browser ka data clear karoge to hisab bhi udd jayega — isliye mahine me ek baar backup zaroor lo.</p>
+    </div>
+  </section>
+
+</main>
+
+<div id="liveBox">
+  <div class="live-hint">Bill ko frame ke andar seedha rakho, phir SCAN dabao</div>
+  <video id="liveVid" autoplay playsinline muted></video>
+  <div class="live-frame"></div>
+  <div class="live-bar">
+    <button class="live-close" onclick="stopLive()">✕ Band</button>
+    <button class="live-shot" onclick="liveCapture()">📷 SCAN</button>
+  </div>
+</div>
+
+<nav>
+  <button class="active" data-pg="scan" onclick="go('scan',this)"><span class="ico">📷</span>Scan</button>
+  <button data-pg="entries" onclick="go('entries',this)"><span class="ico">📋</span>Entries</button>
+  <button data-pg="hisab" onclick="go('hisab',this)"><span class="ico">📊</span>Hisab</button>
+  <button data-pg="set" onclick="go('set',this)"><span class="ico">⚙️</span>Settings</button>
+</nav>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* ================= state ================= */
+let entries = [];
+let costs = {};
+let costNames = {};
+let kharcha = {};
+let settings = {p1:'Partner 1', p2:'Partner 2', ratio:50};
+let apiKey = '';
+let viewMonth = new Date();
+
+const $ = id => document.getElementById(id);
+const fmt = n => '₹' + (Math.round(n*100)/100).toLocaleString('en-IN');
+const monthKey = d => d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0');
+const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+
+/* ================= storage (localStorage) ================= */
+function loadAll(){
+  try{ entries = JSON.parse(localStorage.getItem('fpt:entries')||'[]'); }catch(e){ entries = []; }
+  try{ costs = JSON.parse(localStorage.getItem('fpt:costs')||'{}'); }catch(e){ costs = {}; }
+  try{ costNames = JSON.parse(localStorage.getItem('fpt:costnames')||'{}'); }catch(e){ costNames = {}; }
+  try{ kharcha = JSON.parse(localStorage.getItem('fpt:kharcha')||'{}'); }catch(e){ kharcha = {}; }
+  try{ const s = localStorage.getItem('fpt:settings'); if(s) settings = JSON.parse(s); }catch(e){}
+  apiKey = localStorage.getItem('fpt:key') || '';
+  $('sP1').value = settings.p1; $('sP2').value = settings.p2; $('sRatio').value = settings.ratio;
+  $('sKey').value = '';
+  if(apiKey) $('sKey').placeholder = '•••••••• (key saved hai — badalni ho to nayi paste karo)';
+  updateKeyUI();
+  renderEntries(); renderHisab(); renderCosts();
+}
+function persist(key, obj){
+  try{ localStorage.setItem('fpt:'+key, JSON.stringify(obj)); }
+  catch(e){ toast('⚠️ Save me dikkat aayi — storage full ho sakta hai, backup lo'); }
+}
+function updateKeyUI(){
+  $('keyWarn').style.display = apiKey ? 'none' : 'block';
+  $('keyStatus').innerHTML = apiKey ? '✅ Key saved hai — scan ready.' : '❌ Key abhi nahi daali.';
+}
+function saveKey(){
+  const v = $('sKey').value.trim();
+  if(v) apiKey = v;                       // khali chhoda to purani key hi rahegi
+  localStorage.setItem('fpt:key', apiKey);
+  $('sKey').value = '';
+  if(apiKey) $('sKey').placeholder = '•••••••• (key saved hai — badalni ho to nayi paste karo)';
+  updateKeyUI();
+  toast(apiKey ? '✅ Key save ho gayi — box se chhupa di, ab scan karo!' : 'Pehle key paste karo');
+}
+
+/* ================= Firebase sync ================= */
+// Built-in sync — dono phone khud jud jate hain, kuch daalna nahi padta.
+const FB_DEFAULT_URL  = 'https://fk-tracker-default-rtdb.firebaseio.com';
+const FB_DEFAULT_CODE = 'navdurga2627';
+let fbUrl = FB_DEFAULT_URL, fbCode = FB_DEFAULT_CODE;
+function fbBase(){
+  if(!fbUrl || !fbCode) return null;
+  return fbUrl.replace(/\/+$/,'') + '/shops/' + encodeURIComponent(fbCode);
+}
+function setDot(cls, txt){
+  const d = $('syncDot'); if(!d) return;
+  d.className = 'sync-dot' + (cls ? ' '+cls : '');
+  if(txt) $('syncTxt').textContent = txt;
+}
+async function fbPut(path, obj){
+  const b = fbBase(); if(!b) return true;
+  try{
+    const r = await fetch(b + path + '.json', {method:'PUT', body: JSON.stringify(obj)});
+    if(!r.ok) throw 0;
+    return true;
+  }catch(e){ setDot('err','Sync fail'); toast('⚠️ Sync nahi hua — internet/URL check karo, data phone me safe hai'); return false; }
+}
+async function fbDel(path){
+  const b = fbBase(); if(!b) return true;
+  try{ const r = await fetch(b + path + '.json', {method:'DELETE'}); return r.ok; }
+  catch(e){ return false; }
+}
+function pushEntry(e){ return fbPut('/entries/' + e.id, e); }
+function pushMeta(){ return fbPut('/meta', {costs, costNames, kharcha, settings}); }
+async function pullAll(silent){
+  const b = fbBase(); if(!b) return;
+  setDot('busy','Sync...');
+  try{
+    const r = await fetch(b + '.json');
+    if(!r.ok) throw 0;
+    const d = await r.json();
+    if(d){
+      if(d.entries){
+        entries = Object.values(d.entries).filter(e=>e && e.id);
+        entries.sort((a,b2)=> b2.date.localeCompare(a.date) || b2.ts - a.ts);
+        persist('entries', entries);
+      }
+      if(d.meta){
+        if(d.meta.costs) { costs = d.meta.costs; persist('costs', costs); }
+        if(d.meta.costNames) { costNames = d.meta.costNames; persist('costnames', costNames); }
+        if(d.meta.kharcha) { kharcha = d.meta.kharcha; persist('kharcha', kharcha); }
+        if(d.meta.settings) { settings = d.meta.settings; persist('settings', settings);
+          $('sP1').value = settings.p1; $('sP2').value = settings.p2; $('sRatio').value = settings.ratio; }
+      }
+      renderEntries(); renderHisab(); renderCosts();
+    }
+    setDot('on','Synced');
+    if(!silent) toast('🔄 Sync ho gaya — dono phone ka data ek jaisa hai');
+  }catch(e){
+    setDot('err','Sync fail');
+    if(!silent) toast('⚠️ Sync nahi hua — URL/shop code ya internet check karo');
+  }
+}
+async function pushEverything(){
+  // pehli baar setup pe: is phone ka saara purana data server pe chadha do
+  for(const e of entries){ await pushEntry(e); }
+  await pushMeta();
+}
+async function saveFb(){
+  fbUrl = $('sFbUrl').value.trim();
+  const c = $('sFbCode').value.trim();
+  if(c) fbCode = c;                       // khali chhoda to purana code hi rahega
+  localStorage.setItem('fpt:fburl', fbUrl);
+  localStorage.setItem('fpt:fbcode', fbCode);
+  $('sFbCode').value = '';
+  if(fbCode) $('sFbCode').placeholder = '•••••••• (code saved hai — badalna ho to naya likho)';
+  if(!fbBase()){
+    $('fbStatus').textContent = 'Sync band hai — sirf is phone me data save hoga.';
+    setDot('','Sync'); return;
+  }
+  $('fbStatus').textContent = '⏳ Test chal raha hai...';
+  const ok = await fbPut('/ping', {t: Date.now()});
+  if(ok){
+    $('fbStatus').textContent = '✅ Sync chalu! Ab dusre phone me bhi same URL + code daalo, sab entries milti rahengi.';
+    await pushEverything();
+    await pullAll(true);
+    toast('✅ Sync set ho gaya!');
+  } else {
+    $('fbStatus').textContent = '❌ Connect nahi hua — URL galat hai ya Database rules me read/write allow nahi. URL ".firebaseio.com" ya ".firebasedatabase.app" wala hona chahiye.';
+  }
+}
+function startAutoSync(){
+  setInterval(()=>{ if(fbBase()) pullAll(true); }, 45000);
+  document.addEventListener('visibilitychange', ()=>{ if(!document.hidden && fbBase()) pullAll(true); });
+}
+async function manualSync(){
+  if(!fbBase()){
+    toast('Settings me Firebase URL + shop code daalo, phir sync chalega');
+    go('set', document.querySelector('nav button[data-pg="set"]'));
+    return;
+  }
+  await pushEverything();
+  await pullAll(false);
+}
+function startAutoSync(){
+  setInterval(()=>{ if(fbBase()) pullAll(true); }, 45000);
+  document.addEventListener('visibilitychange', ()=>{ if(!document.hidden && fbBase()) pullAll(true); });
+}
+
+/* ================= navigation ================= */
+function go(pg, btn){
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('show'));
+  $('pg-'+pg).classList.add('show');
+  document.querySelectorAll('nav button').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  if(pg==='hisab') renderHisab();
+  if(pg==='entries') renderEntries();
+  if(pg==='set') renderCosts();
+}
+function toast(msg){
+  const t = $('toast'); t.textContent = msg; t.classList.add('show');
+  clearTimeout(t._h); t._h = setTimeout(()=>t.classList.remove('show'), 2800);
+}
+
+/* ================= scan flow ================= */
+function startScan(mode){
+  if(!apiKey){
+    toast('🔑 Pehle Settings me Gemini key daalo');
+    go('set', document.querySelector('nav button[data-pg="set"]'));
+    return;
+  }
+  if(mode === 'cam'){ openLive(); } else { $('fileIn').click(); }
+}
+
+/* ---------- live in-app scanner ---------- */
+let liveStream = null;
+async function openLive(){
+  if(!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia)){
+    $('camIn').click(); return;                      // browser support nahi -> OS camera
+  }
+  try{
+    liveStream = await navigator.mediaDevices.getUserMedia({
+      video:{ facingMode:'environment', width:{ideal:1920}, height:{ideal:1080} }, audio:false
+    });
+    const v = $('liveVid');
+    v.srcObject = liveStream;
+    $('liveBox').style.display = 'flex';
+    $('lastSaved').style.display = 'none';
+    try{ await v.play(); }catch(e){}
+    // 3 second me bhi picture na aayi to phone ke camera pe chale jao
+    setTimeout(()=>{
+      if(liveStream && !v.videoWidth){
+        stopLive();
+        toast('In-app camera nahi chala — phone ka camera khol raha hoon');
+        $('camIn').click();
+      }
+    }, 3000);
+  }catch(e){
+    // permission mana ya insecure page (content:// / file://) -> OS camera fallback
+    toast('In-app camera nahi khula — phone ka camera khol raha hoon');
+    $('camIn').click();
+  }
+}
+function stopLive(){
+  $('liveBox').style.display = 'none';
+  if(liveStream){ liveStream.getTracks().forEach(t=>t.stop()); liveStream = null; }
+}
+async function liveCapture(){
+  const v = $('liveVid');
+  if(!v.videoWidth){
+    try{ await v.play(); }catch(e){}
+    await new Promise(r=>setTimeout(r, 700));
+    if(!v.videoWidth){
+      stopLive();
+      toast('Camera taiyar nahi hua — phone ka camera khol raha hoon');
+      $('camIn').click();
+      return;
+    }
+  }
+  const MAX = 1568;
+  let w = v.videoWidth, h = v.videoHeight;
+  if(Math.max(w,h) > MAX){ const sc = MAX/Math.max(w,h); w = Math.round(w*sc); h = Math.round(h*sc); }
+  const c = document.createElement('canvas'); c.width = w; c.height = h;
+  c.getContext('2d').drawImage(v, 0, 0, w, h);
+  const url = c.toDataURL('image/jpeg', 0.85);
+  stopLive();
+  scanMode = 'cam';
+  $('queueCard').style.display = 'block';
+  const list = $('queueList');
+  const row = document.createElement('div');
+  row.className = 'queue-item';
+  row.innerHTML = `<img class="q-thumb" src="${url}"><span style="flex:1">Live scan</span><span class="q-status q-wait">Line me...</span>`;
+  list.appendChild(row);
+  queue.push({url, row});
+  processQueue();
+}
+let queue = [];
+let scanMode = 'gal';
+async function handleFiles(files, mode){
+  if(!files || !files.length) return;
+  scanMode = mode || 'gal';
+  $('lastSaved').style.display = 'none';
+  queue = [];
+  $('queueCard').style.display = 'block';
+  const list = $('queueList'); list.innerHTML = '';
+  for(const f of files){
+    let url;
+    try{ url = await readAsDataURL(f); }catch(e){ continue; }
+    const row = document.createElement('div');
+    row.className = 'queue-item';
+    row.innerHTML = `<img class="q-thumb" src="${url}"><span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${f.name||'photo'}</span><span class="q-status q-wait">Line me...</span>`;
+    list.appendChild(row);
+    queue.push({url, row});
+  }
+  $('fileIn').value = '';
+  $('camIn').value = '';
+  processQueue();
+}
+function readAsDataURL(file){
+  return new Promise((res, rej)=>{
+    const img = new Image();
+    const fr = new FileReader();
+    fr.onload = () => { img.src = fr.result; };
+    fr.onerror = rej;
+    img.onload = () => {
+      const MAX = 1568;
+      let w = img.width, h = img.height;
+      if(Math.max(w,h) > MAX){ const s = MAX/Math.max(w,h); w = Math.round(w*s); h = Math.round(h*s); }
+      const c = document.createElement('canvas'); c.width = w; c.height = h;
+      c.getContext('2d').drawImage(img, 0, 0, w, h);
+      res(c.toDataURL('image/jpeg', 0.82));
+    };
+    img.onerror = rej;
+    fr.readAsDataURL(file);
+  });
+}
+let processing = false;
+async function processQueue(){
+  if(processing) return; processing = true;
+  for(const item of queue){
+    if(item.done) continue;
+    const st = item.row.querySelector('.q-status');
+    st.className = 'q-status q-run'; st.textContent = 'Padh raha hoon...';
+    setScanBusy(true);
+    try{
+      const data = await extractInvoice(item.url);
+      item.done = true;
+      setScanBusy(false);
+      st.className = 'q-status q-ok'; st.textContent = 'Padh li ✓ - check karo';
+      await showReview(data);
+    }catch(e){
+      item.done = true;
+      st.className = 'q-status q-err'; st.textContent = 'Nahi padha';
+      setScanBusy(false);
+      if(e && (e.message === 'key' || e.message === 'limit' || e.message === 'net')){
+        toast(errMsg(e));
+        break;
+      } else {
+        toast(errMsg(e));
+      }
+    }
+  }
+  processing = false;
+}
+function setScanBusy(b){
+  $('btnScan').disabled = b;
+  $('scanIco').innerHTML = b ? '<span class="spinner"></span>' : '📷';
+  $('scanTxt').textContent = b ? 'Scan chal raha hai...' : 'Camera se bill ka photo lo';
+}
+
+const GEM_MODELS = ['gemini-2.5-flash','gemini-flash-latest','gemini-2.5-flash-lite','gemini-2.0-flash'];
+async function gemCall(parts){
+  let lastErr = new Error('api');
+  for(const model of GEM_MODELS){
+    let resp;
+    try{
+      resp = await fetch('https://generativelanguage.googleapis.com/v1beta/models/' + model + ':generateContent?key=' + encodeURIComponent(apiKey), {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ contents:[{parts}], generationConfig:{temperature:0} })
+      });
+    }catch(e){ throw new Error('net'); }
+    if(resp.ok){
+      const data = await resp.json();
+      return ((((data.candidates||[])[0]||{}).content||{}).parts||[]).map(p=>p.text||'').join('\n');
+    }
+    if(resp.status === 404){ lastErr = new Error('model'); continue; }   // model nahi mila -> agla try karo
+    if(resp.status === 400 || resp.status === 401 || resp.status === 403) throw new Error('key');
+    if(resp.status === 429){ lastErr = new Error('limit'); continue; }
+    lastErr = new Error('api');
+  }
+  throw lastErr;
+}
+function errMsg(e){
+  const m = e && e.message;
+  if(m==='key') return '❌ Key galat ya invalid hai — nayi key banakar dobara paste karo';
+  if(m==='limit') return '⏳ Free limit poori ho gayi — thodi der baad try karo';
+  if(m==='net') return '📶 Internet ya connection dikkat — file ko GitHub Pages link se kholo, file:// se nahi';
+  if(m==='model') return '❌ Gemini model nahi mila — mujhe batao, main naya model daal dunga';
+  if(m==='parse') return '❌ Photo saaf nahi padhi gayi — seedha, roshni me photo lo';
+  return '❌ Scan me dikkat aayi — Key test karke dekho';
+}
+async function testKey(){
+  const v = $('sKey').value.trim();
+  if(v) apiKey = v;
+  localStorage.setItem('fpt:key', apiKey);
+  $('sKey').value = '';
+  if(apiKey) $('sKey').placeholder = '•••••••• (key saved hai)';
+  updateKeyUI();
+  if(!apiKey){ toast('Pehle key paste karo'); return; }
+  $('keyStatus').textContent = '⏳ Test chal raha hai...';
+  try{
+    const t = await gemCall([{text:'Reply with only the word: OK'}]);
+    $('keyStatus').textContent = t.trim().toUpperCase().includes('OK') ? '✅ Key bilkul sahi chal rahi hai! Ab Scan tab me jao.' : '✅ Key chal gayi (jawab: ' + t.slice(0,30) + ')';
+    toast('✅ Key working hai!');
+  }catch(e){
+    $('keyStatus').textContent = errMsg(e);
+    toast(errMsg(e));
+  }
+}
+
+async function extractInvoice(dataUrl){
+  const b64 = dataUrl.split(',')[1];
+  const text = await gemCall([
+    {inline_data:{mime_type:'image/jpeg', data:b64}},
+    {text:'This is an Indian e-commerce (Flipkart/Amazon) tax invoice photo, possibly rotated. Today is ' + new Date().toISOString().slice(0,10) + '. Extract and respond with ONLY a JSON object, no markdown, no backticks, no explanation: {"order_id":"...","invoice_date":"YYYY-MM-DD","product":"short product name","qty":1,"total_price":0.00}. total_price = the final TOTAL PRICE in INR the customer paid. If a field is unreadable use null. CRITICAL: Indian invoice dates are ALWAYS in DD-MM-YYYY format (day first, then month). Example: 04-07-2026 means 4 July 2026, NOT 7 April. The invoice date will be recent (within the last few weeks of today) - if your converted date is months away from today, you have swapped day and month, fix it.'}
+  ]);
+  const clean = text.replace(/```json|```/g,'').trim();
+  const m = clean.match(/\{[\s\S]*\}/);
+  if(!m) throw new Error('parse');
+  return JSON.parse(m[0]);
+}
+
+/* ================= duplicate detection ================= */
+function normOid(x){ return (x||'').toUpperCase().replace(/[^A-Z0-9]/g,''); }
+function findDup(oid, date, product, qty, sale, excludeId){
+  const no = normOid(oid);
+  if(!no) return null;                                   // sirf Order ID se pakadna hai
+  for(const e of entries){
+    if(excludeId && e.id === excludeId) continue;
+    if(normOid(e.orderId) === no) return e;
+  }
+  return null;
+}
+
+/* ================= auto save (scanner mode) ================= */
+function autoSave(d){
+  try{
+    if(!d || !d.product || d.total_price == null) return false;
+    const date = (d.invoice_date && /^\d{4}-\d{2}-\d{2}$/.test(d.invoice_date)) ? d.invoice_date : null;
+    if(!date) return false;
+    // date ka sach-jhooth: aaj se aage ya 60 din se purani -> shak hai, form kholo
+    const dd = new Date(date+'T00:00'), now = new Date();
+    const diff = (now - dd) / 86400000;
+    if(isNaN(diff) || diff < -1 || diff > 60) return false;
+    const qty = parseInt(d.qty)||1;
+    const sale = parseFloat(d.total_price);
+    if(isNaN(sale) || sale <= 0) return false;
+    const k = prodKey(d.product);
+    if(!k || costs[k] == null) return false;                    // lagat pata nahi -> form kholo
+    const oid = (d.order_id||'').trim();
+    if(findDup(oid, date, d.product, qty, sale, null)) return false;   // duplicate shak -> form kholo warning ke saath
+    const cost = Math.round(costs[k]*qty*100)/100;
+    const e = { id: Date.now()+''+Math.floor(Math.random()*999),
+      orderId: oid, date, product: d.product, qty, sale, cost, ts: Date.now() };
+    entries.push(e);
+    entries.sort((a,b)=> b.date.localeCompare(a.date) || b.ts - a.ts);
+    persist('entries', entries);
+    pushEntry(e);
+    renderEntries();
+    const p = sale - cost;
+    $('lastSavedTxt').textContent = d.product + ' · ' + fmt(sale) + ' · Profit ' + (p>=0?'+':'') + fmt(p);
+    if(scanMode === 'cam') $('lastSaved').style.display = 'block';
+    toast('✅ ' + d.product.slice(0,20) + ' — entry chadh gayi (' + (p>=0?'+':'') + fmt(p) + ')');
+    return true;
+  }catch(e){ return false; }
+}
+
+/* ================= review / save ================= */
+let reviewResolve = null;
+let editingId = null;
+function showReview(d){
+  return new Promise(res=>{
+    reviewResolve = res;
+    editingId = null;
+    $('reviewCard').style.display = 'block';
+    $('reviewTitle').textContent = 'Entry check karo';
+    $('fOrder').value = d.order_id || '';
+    $('fDate').value = d.invoice_date || new Date().toISOString().slice(0,10);
+    $('fProduct').value = d.product || '';
+    $('fQty').value = d.qty || 1;
+    $('fSale').value = d.total_price != null ? d.total_price : '';
+    $('fCost').value = '';
+    autoCost(); dupCheck(); calcPreview();
+    $('reviewCard').scrollIntoView({behavior:'smooth'});
+  });
+}
+function openManual(){
+  editingId = null;
+  $('reviewCard').style.display = 'block';
+  $('reviewTitle').textContent = 'Manual entry';
+  $('fOrder').value = '';
+  $('fDate').value = new Date().toISOString().slice(0,10);
+  $('fProduct').value = ''; $('fQty').value = 1; $('fSale').value = ''; $('fCost').value = '';
+  $('dupWarn').style.display = 'none';
+  calcPreview();
+  $('reviewCard').scrollIntoView({behavior:'smooth'});
+}
+function openEdit(id){
+  const e = entries.find(x=>x.id===id);
+  if(!e) return;
+  editingId = id;
+  go('scan', document.querySelector('nav button[data-pg="scan"]'));
+  $('reviewCard').style.display = 'block';
+  $('reviewTitle').textContent = '✎ Entry edit karo';
+  $('fOrder').value = e.orderId || '';
+  $('fDate').value = e.date;
+  $('fProduct').value = e.product;
+  $('fQty').value = e.qty;
+  $('fSale').value = e.sale;
+  $('fCost').value = e.cost;
+  dupCheck(); calcPreview();
+  $('reviewCard').scrollIntoView({behavior:'smooth'});
+}
+function prodKey(name){ return (name||'').toLowerCase().replace(/[^a-z0-9]/g,'').slice(0,40); }
+function autoCost(){
+  const k = prodKey($('fProduct').value);
+  if(k && costs[k] != null && $('fCost').value === ''){
+    $('fCost').value = (costs[k] * (parseFloat($('fQty').value)||1)).toFixed(2);
+  }
+  calcPreview();
+}
+function dupCheck(){
+  const oid = $('fOrder').value.trim();
+  const d = findDup(oid, $('fDate').value, $('fProduct').value, parseInt($('fQty').value)||1, parseFloat($('fSale').value)||0, editingId);
+  $('dupWarn').style.display = d ? 'block' : 'none';
+}
+function calcPreview(){
+  const s = parseFloat($('fSale').value)||0, c = parseFloat($('fCost').value)||0;
+  const p = s - c;
+  const el = $('profitPrev');
+  el.textContent = 'Profit: ' + fmt(p);
+  el.className = 'profit-preview ' + (p >= 0 ? 'p-pos' : 'p-neg');
+}
+function saveEntry(){
+  const product = $('fProduct').value.trim();
+  const sale = parseFloat($('fSale').value);
+  const cost = parseFloat($('fCost').value);
+  const date = $('fDate').value;
+  const qty = parseInt($('fQty').value)||1;
+  if(!product){ toast('Product ka naam daalo'); return; }
+  if(isNaN(sale)){ toast('Bill price daalo'); return; }
+  if(isNaN(cost)){ toast('Lagat daalo — profit ke liye zaroori hai'); return; }
+  if(!date){ toast('Date daalo'); return; }
+  const oidNew = $('fOrder').value.trim();
+  const dupE = findDup(oidNew, date, product, qty, sale, editingId);
+  if(dupE){
+    if(!confirm('🔴 DOUBLE ORDER!\n\nYe Order ID pehle se chadha hai:\n' + dupE.orderId + '\n(' + dupE.product + ' | ' + dupE.date + ' | Rs ' + dupE.sale + ')\n\nPakka phir bhi chadhana hai?')){
+      toast('Double entry ruk gayi ✋');
+      closeReview();
+      return;
+    }
+  }
+  if(editingId){
+    const e = entries.find(x=>x.id===editingId);
+    if(e){ e.orderId = $('fOrder').value.trim(); e.date = date; e.product = product; e.qty = qty; e.sale = sale; e.cost = cost; pushEntry(e); }
+    editingId = null;
+    toast('✅ Entry update ho gayi');
+  } else {
+    const e = { id: Date.now()+''+Math.floor(Math.random()*999),
+      orderId: $('fOrder').value.trim(), date, product, qty, sale, cost, ts: Date.now() };
+    entries.push(e);
+    pushEntry(e);
+    toast('✅ Entry chadh gayi — profit ' + fmt(sale-cost));
+  }
+  entries.sort((a,b)=> b.date.localeCompare(a.date) || b.ts - a.ts);
+  persist('entries', entries);
+  const k = prodKey(product);
+  if(k){ costs[k] = cost / qty; costNames[k] = product; persist('costs', costs); persist('costnames', costNames); pushMeta(); }
+  closeReview();
+  renderEntries();
+}
+function cancelReview(){ closeReview(); }
+function closeReview(){
+  $('reviewCard').style.display = 'none';
+  editingId = null;
+  if(reviewResolve){ reviewResolve(); reviewResolve = null; }
+}
+
+/* ================= PDF reports ================= */
+function pdfDoc(){ return new window.jspdf.jsPDF({unit:'mm', format:'a4'}); }
+function rs(n){ return 'Rs ' + (Math.round(n*100)/100).toLocaleString('en-IN'); }
+function buildReport(title, sub, rows, extraKharcha){
+  const doc = pdfDoc();
+  const W = 210, M = 14;
+  let y = 18;
+  doc.setFont('helvetica','bold'); doc.setFontSize(15);
+  doc.text('M/s NAV DURGA SPORTS - FK Profit Report', M, y); y += 7;
+  doc.setFontSize(11); doc.setFont('helvetica','normal');
+  doc.text(title + (sub ? '  |  ' + sub : ''), M, y); y += 4;
+  doc.setDrawColor(179,40,45); doc.setLineWidth(0.8);
+  doc.line(M, y, W-M, y); y += 8;
+  // table head
+  doc.setFontSize(9); doc.setFont('helvetica','bold');
+  doc.text('Date', M, y);
+  doc.text('Product / Order ID', M+22, y);
+  doc.text('Qty', M+118, y);
+  doc.text('Sale', M+132, y);
+  doc.text('Lagat', M+152, y);
+  doc.text('Profit', M+172, y);
+  y += 2; doc.setDrawColor(200); doc.setLineWidth(0.2); doc.line(M, y, W-M, y); y += 5;
+  doc.setFont('helvetica','normal');
+  let ts=0, tc=0, tq=0;
+  for(const e of rows){
+    if(y > 275){ doc.addPage(); y = 18; }
+    const p = e.sale - e.cost; ts += e.sale; tc += e.cost; tq += e.qty;
+    const d = e.date.split('-'); // YYYY-MM-DD -> DD-MM
+    doc.text(d[2]+'-'+d[1], M, y);
+    doc.text((e.product||'').slice(0,38), M+22, y);
+    if(e.orderId){ doc.setFontSize(7); doc.setTextColor(120); doc.text(e.orderId.slice(0,30), M+22, y+3.2); doc.setFontSize(9); doc.setTextColor(0); }
+    doc.text(String(e.qty), M+118, y);
+    doc.text(rs(e.sale), M+132, y);
+    doc.text(rs(e.cost), M+152, y);
+    doc.text((p>=0?'+':'')+rs(p).replace('Rs ',''), M+172, y);
+    y += e.orderId ? 8 : 6;
+  }
+  y += 2; doc.setDrawColor(0); doc.setLineWidth(0.4); doc.line(M, y, W-M, y); y += 7;
+  doc.setFont('helvetica','bold'); doc.setFontSize(10);
+  doc.text('Orders: ' + rows.length + '    Qty: ' + tq, M, y); y += 6;
+  doc.text('Total Sale: ' + rs(ts), M, y); y += 6;
+  doc.text('Total Lagat: ' + rs(tc), M, y); y += 6;
+  let net = ts - tc;
+  if(extraKharcha && extraKharcha.length){
+    const kh = extraKharcha.reduce((a,k)=>a+k.amt,0);
+    doc.text('Katauti (Tax/Return/Kharcha): ' + rs(kh), M, y); y += 5;
+    doc.setFont('helvetica','normal'); doc.setFontSize(8.5);
+    for(const k of extraKharcha){ doc.text('   - ' + k.name.slice(0,40) + ': ' + rs(k.amt), M, y); y += 4.5; }
+    doc.setFont('helvetica','bold'); doc.setFontSize(10); y += 2;
+    net -= kh;
+  }
+  doc.setFontSize(12); doc.setTextColor(net>=0 ? 30 : 179, net>=0 ? 107 : 40, net>=0 ? 69 : 45);
+  doc.text('NET PROFIT: ' + rs(net), M, y); y += 8;
+  doc.setTextColor(0); doc.setFontSize(10);
+  const r = Math.min(100, Math.max(0, settings.ratio||50));
+  doc.text('Partner Batwara:', M, y); y += 6;
+  doc.setFont('helvetica','normal');
+  doc.text(settings.p1 + ' (' + r + '%): ' + rs(net*r/100), M+4, y); y += 5.5;
+  doc.text(settings.p2 + ' (' + (100-r) + '%): ' + rs(net*(100-r)/100), M+4, y);
+  return doc;
+}
+async function sharePDF(doc, filename){
+  const blob = doc.output('blob');
+  const file = new File([blob], filename, {type:'application/pdf'});
+  if(navigator.canShare && navigator.canShare({files:[file]})){
+    try{ await navigator.share({files:[file], title:filename}); return; }catch(e){ if(e.name==='AbortError') return; }
+  }
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = filename; a.click();
+  toast('PDF download ho gayi — WhatsApp me attach kar do');
+}
+function dayPDF(dateStr){
+  const rows = entries.filter(e=>e.date===dateStr).slice().sort((a,b)=>a.ts-b.ts);
+  if(!rows.length){ toast('Is din ki koi entry nahi'); return; }
+  const d = new Date(dateStr+'T00:00');
+  const doc = buildReport('Daily Report: ' + d.getDate() + ' ' + MONTHS[d.getMonth()] + ' ' + d.getFullYear(), rows.length + ' orders', rows, null);
+  sharePDF(doc, 'FK-Report-' + dateStr + '.pdf');
+}
+function monthPDF(){
+  const mk = monthKey(viewMonth);
+  const rows = entries.filter(e=>e.date && e.date.startsWith(mk)).slice().sort((a,b)=>a.date.localeCompare(b.date)||a.ts-b.ts);
+  if(!rows.length){ toast('Is mahine ki koi entry nahi'); return; }
+  const doc = buildReport('Monthly Report: ' + MONTHS[viewMonth.getMonth()] + ' ' + viewMonth.getFullYear(), rows.length + ' orders', rows, kharcha[mk]||[]);
+  sharePDF(doc, 'FK-Report-' + mk + '.pdf');
+}
+
+/* ================= entries list ================= */
+function renderEntries(){
+  const box = $('entriesList');
+  if(!entries.length){
+    box.innerHTML = '<div class="empty"><div class="big">🧾</div>Abhi koi entry nahi.<br>Scan tab me jaake pehla bill chadhao!</div>';
+    return;
+  }
+  // duplicate sirf Order ID se dhundo
+  const counts = {};
+  for(const e of entries){
+    const no = normOid(e.orderId);
+    if(no) counts['o:'+no] = (counts['o:'+no]||0)+1;
+  }
+  let html = '', lastDate = '';
+  for(const e of entries){
+    if(e.date !== lastDate){
+      lastDate = e.date;
+      const d = new Date(e.date+'T00:00');
+      html += `<div class="day-head"><span>${d.getDate()} ${MONTHS[d.getMonth()].slice(0,3)} ${d.getFullYear()}</span><button class="day-pdf" onclick="dayPDF('${e.date}')">📄 PDF · Share</button></div>`;
+    }
+    const p = e.sale - e.cost;
+    const no = normOid(e.orderId);
+    const isDup = no && counts['o:'+no] > 1;
+    html += `<div class="entry${isDup?' dup':''}">
+      <div class="info">
+        <div class="name">${esc(e.product)}${isDup?'<span class="chip-dup">DOUBLE</span>':''}</div>
+        <div class="meta">${e.orderId ? esc(e.orderId) + ' · ' : ''}Qty ${e.qty} · Lagat ${fmt(e.cost)}</div>
+      </div>
+      <div class="nums">
+        <div class="sale">${fmt(e.sale)}</div>
+        <div class="pft ${p>=0?'pos':'neg'}">${p>=0?'+':''}${fmt(p)}</div>
+      </div>
+      <button class="edt" onclick="openEdit('${e.id}')">✎</button>
+      <button class="del" onclick="delEntry('${e.id}')">✕</button>
+    </div>`;
+  }
+  box.innerHTML = html;
+}
+function esc(s){ return (s||'').replace(/[<>&"]/g, c=>({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c])); }
+function delEntry(id){
+  if(!confirm('Ye entry hatani hai?')) return;
+  entries = entries.filter(e=>e.id!==id);
+  persist('entries', entries);
+  fbDel('/entries/' + id);
+  renderEntries(); toast('Entry hat gayi');
+}
+
+/* ================= hisab ================= */
+function shiftMonth(d){ viewMonth.setMonth(viewMonth.getMonth()+d); renderHisab(); }
+function swapDate(id){
+  const e = entries.find(x=>x.id===id);
+  if(!e) return;
+  const p = (e.date||'').split('-');
+  if(p.length!==3) return;
+  const nd = p[0]+'-'+p[2]+'-'+p[1];   // YYYY-MM-DD -> YYYY-DD-MM (din-mahina palto)
+  if(isNaN(new Date(nd+'T00:00'))){ toast('Ye date palti nahi ja sakti — ✎ se khud theek karo'); return; }
+  e.date = nd;
+  entries.sort((a,b)=> b.date.localeCompare(a.date) || b.ts - a.ts);
+  persist('entries', entries);
+  pushEntry(e);
+  renderHisab(); renderEntries();
+  toast('✅ Date seedhi ho gayi: ' + nd);
+}
+function renderHisab(){
+  const mk = monthKey(viewMonth);
+  $('monthName').textContent = MONTHS[viewMonth.getMonth()] + ' ' + viewMonth.getFullYear();
+  const rows = entries.filter(e => e.date && e.date.startsWith(mk));
+  const sales = rows.reduce((a,e)=>a+e.sale,0);
+  const lagat = rows.reduce((a,e)=>a+e.cost,0);
+  const kh = (kharcha[mk]||[]).reduce((a,k)=>a+k.amt,0);
+  const net = sales - lagat - kh;
+  const tq = rows.reduce((a,e)=>a+e.qty,0);
+  $('statGrid').innerHTML = `
+    <div class="stat wide hero"><div class="lbl">Net Profit (batwara isi ka)</div><div class="val" style="color:${net>=0?'#7ee2ae':'#ff9b9b'}">${fmt(net)}</div></div>
+    <div class="stat"><div class="lbl">Orders</div><div class="val">${rows.length}</div></div>
+    <div class="stat"><div class="lbl">Total Qty</div><div class="val">${tq}</div></div>
+    <div class="stat"><div class="lbl">Total Sale</div><div class="val">${fmt(sales)}</div></div>
+    <div class="stat"><div class="lbl">Total Lagat</div><div class="val">${fmt(lagat)}</div></div>
+    <div class="stat wide"><div class="lbl">Katauti (Tax/Return/Kharcha)</div><div class="val">${fmt(kh)}</div></div>`;
+  // date mismatch: doosre mahine wali entries ki poori list, fix buttons ke saath
+  const outsiders = entries.filter(e => !e.date || !e.date.startsWith(mk));
+  const mm = $('dateMismatch');
+  if(entries.length && rows.length < entries.length){
+    let list = outsiders.slice(0,15).map(e=>{
+      const parts = (e.date||'').split('-');
+      let swapBtn = '';
+      if(parts.length===3){
+        const y=parts[0], m=parts[1], d=parts[2];
+        if(parseInt(d)>=1 && parseInt(d)<=12 && (y+'-'+d) === mk.slice(0,7)){
+          swapBtn = `<button class="day-pdf" style="background:var(--green);color:#fff;border:none" onclick="swapDate('${e.id}')">🔁 ${d}-${m} karo</button>`;
+        }
+      }
+      return `<div class="partner-row" style="font-size:.8rem;gap:8px">
+        <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><b>${e.date}</b> · ${esc(e.product)} · ${fmt(e.sale)}</span>
+        <span style="flex:none;display:flex;gap:6px">${swapBtn}<button class="day-pdf" onclick="openEdit('${e.id}')">✎</button></span>
+      </div>`;
+    }).join('');
+    mm.innerHTML = `<div class="badge-dup" style="margin-top:10px"><b>ℹ️ Kul ${entries.length} entries, is mahine ki sirf ${rows.length}!</b><br>Neeche wali ${outsiders.length} entries doosri date pe chadhi hain (scan me date ulti padhi gayi hogi). 🔁 dabao to date seedhi ho jayegi, ya ✎ se khud theek karo:</div>${list}`;
+  } else { mm.innerHTML = ''; }
+  const r = Math.min(100, Math.max(0, settings.ratio||50));
+  $('partnerSplit').innerHTML = `
+    <div class="partner-row"><span>${esc(settings.p1)} (${r}%)</span><b>${fmt(net*r/100)}</b></div>
+    <div class="partner-row"><span>${esc(settings.p2)} (${100-r}%)</span><b>${fmt(net*(100-r)/100)}</b></div>`;
+  const kl = $('kharchaList');
+  const ks = kharcha[mk]||[];
+  kl.innerHTML = ks.length ? ks.map((k,i)=>
+    `<div class="partner-row"><span>${esc(k.name)}</span><span><b>${fmt(k.amt)}</b> <button style="background:none;border:none;color:#c3c8cf;cursor:pointer;font-size:1rem" onclick="delKharcha('${mk}',${i})">✕</button></span></div>`
+  ).join('') : '<p class="hint">Is mahine koi extra kharcha nahi.</p>';
+}
+function quickK(name){
+  $('kName').value = name;
+  $('kAmt').focus();
+  toast(name + ' — ab rakam daalke + dabao');
+}
+function addKharcha(){
+  const name = $('kName').value.trim(), amt = parseFloat($('kAmt').value);
+  if(!name || isNaN(amt)){ toast('Kharcha ka naam aur rakam dono daalo'); return; }
+  const mk = monthKey(viewMonth);
+  (kharcha[mk] = kharcha[mk]||[]).push({name, amt});
+  persist('kharcha', kharcha);
+  pushMeta();
+  $('kName').value=''; $('kAmt').value='';
+  renderHisab();
+}
+function delKharcha(mk, i){
+  kharcha[mk].splice(i,1);
+  persist('kharcha', kharcha);
+  pushMeta();
+  renderHisab();
+}
+
+/* ================= settings ================= */
+function saveSettings(){
+  settings.p1 = $('sP1').value.trim() || 'Partner 1';
+  settings.p2 = $('sP2').value.trim() || 'Partner 2';
+  settings.ratio = Math.min(100, Math.max(0, parseFloat($('sRatio').value)||50));
+  persist('settings', settings);
+  pushMeta();
+  toast('✅ Settings save ho gayi');
+  renderHisab();
+}
+function renderCosts(){
+  const keys = Object.keys(costs);
+  const box = $('costList');
+  if(!keys.length){ box.innerHTML = '<p class="hint">Abhi koi product saved nahi.</p>'; return; }
+  box.innerHTML = keys.map(k=>
+    `<div class="cost-row"><span class="pn">${esc(costNames[k]||k)}</span>₹<input type="number" step="0.01" value="${costs[k]}" onchange="updCost('${k}',this.value)"></div>`
+  ).join('');
+}
+function updCost(k, v){
+  costs[k] = parseFloat(v)||0;
+  persist('costs', costs);
+  pushMeta();
+  toast('Lagat update ho gayi');
+}
+function addProduct(){
+  const name = $('npName').value.trim(), c = parseFloat($('npCost').value);
+  if(!name || isNaN(c)){ toast('Product ka naam aur per-piece lagat dono daalo'); return; }
+  const k = prodKey(name);
+  costs[k] = c; costNames[k] = name;
+  persist('costs', costs); persist('costnames', costNames);
+  pushMeta();
+  $('npName').value=''; $('npCost').value='';
+  renderCosts();
+  toast('✅ Product jud gaya — scan pe lagat khud bharegi');
+}
+function exportData(){
+  const blob = new Blob([JSON.stringify({v:1, entries, costs, costNames, kharcha, settings}, null, 2)], {type:'application/json'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'fk-profit-backup-' + new Date().toISOString().slice(0,10) + '.json';
+  a.click();
+}
+function importData(file){
+  if(!file) return;
+  const fr = new FileReader();
+  fr.onload = () => {
+    try{
+      const d = JSON.parse(fr.result);
+      if(!d || !Array.isArray(d.entries)) throw 0;
+      if(!confirm('Backup se ' + d.entries.length + ' entries wapas aayengi. Abhi ka data replace ho jayega. Pakka?')) return;
+      entries = d.entries; costs = d.costs||{}; costNames = d.costNames||{}; kharcha = d.kharcha||{}; settings = d.settings||settings;
+      persist('entries', entries); persist('costs', costs); persist('costnames', costNames); persist('kharcha', kharcha); persist('settings', settings);
+      pushEverything();
+      loadAll();
+      toast('✅ Backup restore ho gaya');
+    }catch(e){ toast('❌ Ye file sahi backup nahi hai'); }
+  };
+  fr.readAsText(file);
+}
+$('fOrder').addEventListener('input', dupCheck);
+
+loadAll();
+if('serviceWorker' in navigator){
+  navigator.serviceWorker.register('sw.js').then(reg=>{ reg.update(); }).catch(()=>{});
+  let refreshed=false;
+  navigator.serviceWorker.addEventListener('controllerchange', ()=>{
+    if(refreshed) return; refreshed=true; location.reload();
+  });
+}
+</script>
+</body>
+</html>
