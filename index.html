@@ -228,6 +228,7 @@
   #reviewCard .profit-preview{margin:10px 0 8px;padding:8px}
   .rv-btns{display:grid;grid-template-columns:1fr 2fr;gap:10px}
   .rv-btns .btn{margin:0}
+  #fSale.neg-in{border-color:#c0392b;color:#c0392b;background:#fdf1f0;font-weight:700}
 </style>
 </head>
 <body>
@@ -236,7 +237,7 @@
   <div class="brand">
     <div class="ball"></div>
     <div>
-      <h1>FK Profit Tracker <span style="font-size:.6rem;background:var(--seam);padding:2px 6px;border-radius:6px;vertical-align:middle">v33</span></h1>
+      <h1>FK Profit Tracker <span style="font-size:.6rem;background:var(--seam);padding:2px 6px;border-radius:6px;vertical-align:middle">v34</span></h1>
       <div class="sub">M/s Nav Durga Sports · DASH X</div>
     </div>
     <button class="sync-btn" id="lockBtn" style="display:none;margin-left:auto;margin-right:6px" onclick="toggleLock()">🔒 Locked</button>
@@ -368,8 +369,8 @@
   <section class="page" id="pg-set">
     <div class="card" style="background:var(--ink);border-color:var(--ink)">
       <h2 style="color:#fff">📌 App Version</h2>
-      <p style="color:#7ee2ae;font-size:1.6rem;font-weight:900;margin:6px 0">v33 · Form ek screen me</p>
-      <p class="hint" style="color:#9aa3ad">Agar yahan <b style="color:#7ee2ae">v33</b> dikh raha hai to ye NAYI app hai ✅<br>Ab app KHUD dekhti hai — nayi aane pe hara button dikha degi, ek tap me aa jayegi.<br>Purani me ye box hoga hi nahi.</p>
+      <p style="color:#7ee2ae;font-size:1.6rem;font-weight:900;margin:6px 0">v34 · Return hamesha minus</p>
+      <p class="hint" style="color:#9aa3ad">Agar yahan <b style="color:#7ee2ae">v34</b> dikh raha hai to ye NAYI app hai ✅<br>Ab app KHUD dekhti hai — nayi aane pe hara button dikha degi, ek tap me aa jayegi.<br>Purani me ye box hoga hi nahi.</p>
       <button class="btn" style="background:rgba(255,255,255,.15);color:#fff;margin-top:10px" onclick="forceUpdate()">🔄 Nayi app laao (cache saaf karo)</button>
     </div>
     <div class="card">
@@ -538,7 +539,7 @@ function sanitize(list){
     date: (typeof e.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(e.date)) ? e.date : new Date().toISOString().slice(0,10),
     product: (e.product == null || e.product === '') ? '(bina naam)' : String(e.product),
     qty: (parseInt(e.qty) > 0 ? parseInt(e.qty) : 1),
-    sale: (isNaN(parseFloat(e.sale)) ? 0 : parseFloat(e.sale)),
+    sale: (isNaN(parseFloat(e.sale)) ? 0 : (e.kind === 'ret' ? Math.abs(parseFloat(e.sale)) : parseFloat(e.sale))),   // return hamesha minus
     cost: (isNaN(parseFloat(e.cost)) ? 0 : parseFloat(e.cost)),
     ts: (parseInt(e.ts) || Date.now()),
     returned: !!e.returned,
@@ -1162,7 +1163,7 @@ async function lblAddAll(){
 }
 
 /* ================= auto update check ================= */
-const APP_VERSION = 33;   // har nayi file me ye badhta hai
+const APP_VERSION = 34;   // har nayi file me ye badhta hai
 async function checkForUpdate(){
   try{
     // apni hi file dobara laao (cache se nahi, taaza)
@@ -1992,6 +1993,8 @@ let editingId = null;
 let retEntryMode = false;   // return ki alag entry ban rahi hai (paisa hisab se ghatega)
 function formMode(ret){
   $('lSale').textContent = ret ? 'Return ka nuksan ₹ (kul)' : 'Bill price ₹';
+  $('fSale').placeholder = ret ? 'Sirf amount (jaise 100) — minus khud' : '';
+  $('fSale').classList.toggle('neg-in', !!ret);
   $('costBox').style.display = ret ? 'none' : '';
   $('fSale').dataset.auto = '0'; $('fCost').dataset.auto = '0';
 }
@@ -2083,13 +2086,20 @@ function calcPreview(){
   const s = parseFloat($('fSale').value)||0, c = parseFloat($('fCost').value)||0;
   const p = s - c;
   const el = $('profitPrev');
+  if(retEntryMode){                       // return / return cost: hamesha minus, laal me
+    const v = Math.abs(s);
+    el.textContent = '➖ Hisab se minus: -' + fmt(v);
+    el.className = 'profit-preview p-neg';
+    return;
+  }
   el.textContent = 'Profit: ' + fmt(p);
   el.className = 'profit-preview ' + (p >= 0 ? 'p-pos' : 'p-neg');
 }
 function saveEntry(){
   if(!askPin(editingId ? 'Entry badalni hai' : 'Entry chadhani hai')) return;
   const product = $('fProduct').value.trim();
-  const sale = parseFloat($('fSale').value);
+  let sale = parseFloat($('fSale').value);
+  if(retEntryMode && !isNaN(sale)) sale = Math.abs(sale);
   let cost = parseFloat($('fCost').value);
   let date = $('fDate').value;
   const qty = parseInt($('fQty').value)||1;
@@ -2137,7 +2147,7 @@ function saveReturnEntry(){
   if(!askPin('Return chadhana hai')) return;
   const oid = $('fOrder').value.trim();
   const qty = parseInt($('fQty').value) || 1;
-  let loss = parseFloat($('fSale').value); if(isNaN(loss)) loss = 0;
+  let loss = Math.abs(parseFloat($('fSale').value)); if(isNaN(loss)) loss = 0;   // - lagane ki zarurat nahi
   const date = $('fDate').value || todayStr();
   const no = normOid(oid);
   const hit = (no && !rcMode) ? entries.filter(x => x.kind !== 'ret' && !x.returned && (normOid(x.orderId) === no || (no.length >= 6 && normOid(x.orderId).endsWith(no)))) : [];
