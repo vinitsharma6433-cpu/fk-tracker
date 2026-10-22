@@ -227,7 +227,7 @@
   <div class="brand">
     <div class="ball"></div>
     <div>
-      <h1>FK Profit Tracker <span style="font-size:.6rem;background:var(--seam);padding:2px 6px;border-radius:6px;vertical-align:middle">v30</span></h1>
+      <h1>FK Profit Tracker <span style="font-size:.6rem;background:var(--seam);padding:2px 6px;border-radius:6px;vertical-align:middle">v31</span></h1>
       <div class="sub">M/s Nav Durga Sports · DASH X</div>
     </div>
     <button class="sync-btn" id="lockBtn" style="display:none;margin-left:auto;margin-right:6px" onclick="toggleLock()">🔒 Locked</button>
@@ -278,13 +278,13 @@
       <input id="fOrder" placeholder="OD...">
       <div class="row2">
         <div><label>Date (order chalane ka din)</label><input id="fDate" type="date"></div>
-        <div><label>Qty</label><input id="fQty" type="number" min="1" value="1" oninput="calcPreview()"></div>
+        <div><label>Qty</label><input id="fQty" type="number" min="1" value="1" oninput="fillRates()"></div>
       </div>
       <label>Product</label>
       <input id="fProduct" placeholder="DASH X pack of 3" oninput="autoCost()">
       <div class="row2">
-        <div><label>Bill price ₹</label><input id="fSale" type="number" step="0.01" oninput="calcPreview()"></div>
-        <div><label>Lagat ₹ (total, is order ki)</label><input id="fCost" type="number" step="0.01" oninput="calcPreview()"></div>
+        <div><label id="lSale">Bill price ₹</label><input id="fSale" type="number" step="0.01" oninput="this.dataset.auto='0';calcPreview()"></div>
+        <div id="costBox"><label>Lagat ₹ (total, is order ki)</label><input id="fCost" type="number" step="0.01" oninput="this.dataset.auto='0';calcPreview()"></div>
       </div>
       <p class="hint" style="margin-top:6px">Lagat = maal + packing + Flipkart fees jo bhi is order pe laga. Ek baar product ki lagat daal do, agli baar khud bhar jayegi.</p>
       <div class="profit-preview p-pos" id="profitPrev">Profit: ₹0</div>
@@ -357,8 +357,8 @@
   <section class="page" id="pg-set">
     <div class="card" style="background:var(--ink);border-color:var(--ink)">
       <h2 style="color:#fff">📌 App Version</h2>
-      <p style="color:#7ee2ae;font-size:1.6rem;font-weight:900;margin:6px 0">v30 · Label Tally (PDF)</p>
-      <p class="hint" style="color:#9aa3ad">Agar yahan <b style="color:#7ee2ae">v30</b> dikh raha hai to ye NAYI app hai ✅<br>Ab app KHUD dekhti hai — nayi aane pe hara button dikha degi, ek tap me aa jayegi.<br>Purani me ye box hoga hi nahi.</p>
+      <p style="color:#7ee2ae;font-size:1.6rem;font-weight:900;margin:6px 0">v31 · Return manual + rate yaad</p>
+      <p class="hint" style="color:#9aa3ad">Agar yahan <b style="color:#7ee2ae">v31</b> dikh raha hai to ye NAYI app hai ✅<br>Ab app KHUD dekhti hai — nayi aane pe hara button dikha degi, ek tap me aa jayegi.<br>Purani me ye box hoga hi nahi.</p>
       <button class="btn" style="background:rgba(255,255,255,.15);color:#fff;margin-top:10px" onclick="forceUpdate()">🔄 Nayi app laao (cache saaf karo)</button>
     </div>
     <div class="card">
@@ -808,7 +808,9 @@ let lblAlias = {};          // label ka raw naam -> apna product naam
 function loadLblMaps(){
   try{ prices = JSON.parse(localStorage.getItem('fpt:prices') || '{}') || {}; }catch(e){ prices = {}; }
   try{ lblAlias = JSON.parse(localStorage.getItem('fpt:lblalias') || '{}') || {}; }catch(e){ lblAlias = {}; }
+  try{ retCosts = JSON.parse(localStorage.getItem('fpt:retcosts') || '{}') || {}; }catch(e){ retCosts = {}; }
 }
+var retCosts = {};
 loadLblMaps();
 
 /* ---------- PDF reader (internet se ek baar aata hai, key/API nahi lagti) ---------- */
@@ -1149,7 +1151,7 @@ async function lblAddAll(){
 }
 
 /* ================= auto update check ================= */
-const APP_VERSION = 30;   // har nayi file me ye badhta hai
+const APP_VERSION = 31;   // har nayi file me ye badhta hai
 async function checkForUpdate(){
   try{
     // apni hi file dobara laao (cache se nahi, taaza)
@@ -1207,7 +1209,7 @@ async function fbDel(path){
   catch(e){ return false; }
 }
 function pushEntry(e){ return fbPut('/entries/' + e.id, e); }
-function pushMeta(){ return fbPut('/meta', {costs, costNames, kharcha, settings, prices, lblAlias}); }
+function pushMeta(){ return fbPut('/meta', {costs, costNames, kharcha, settings, prices, lblAlias, retCosts}); }
 async function pullAll(silent){
   const b = fbBase(); if(!b) return;
   setDot('busy','Sync...');
@@ -1227,6 +1229,7 @@ async function pullAll(silent){
         if(d.meta.kharcha) { kharcha = d.meta.kharcha; persist('kharcha', kharcha); }
         if(d.meta.prices) { prices = d.meta.prices; persist('prices', prices); }
         if(d.meta.lblAlias) { lblAlias = d.meta.lblAlias; persist('lblalias', lblAlias); }
+        if(d.meta.retCosts) { retCosts = d.meta.retCosts; persist('retcosts', retCosts); }
         if(d.meta.settings) { settings = d.meta.settings; persist('settings', settings);
           $('sP1').value = settings.p1; $('sP2').value = settings.p2; $('sRatio').value = settings.ratio; }
       }
@@ -1885,7 +1888,7 @@ function oldSafeDate(x){
 }
 
 /* ================= duplicate detection ================= */
-function normOid(x){ return (x||'').toUpperCase().replace(/[^A-Z0-9]/g,''); }
+function normOid(x){ return String(x||'').trim().replace(/_\d{1,2}$/,'').toUpperCase().replace(/[^A-Z0-9]/g,''); }
 function findDup(oid, date, product, qty, sale, excludeId){
   const no = normOid(oid);
   if(!no) return null;                                   // sirf Order ID se pakadna hai
@@ -1950,30 +1953,8 @@ function handleReturn(d){
   markReturn(e.id, true);
 }
 function manualReturn(){
-  const oid = prompt('↩️ RETURN MANUAL\n\nOrder ID daalo (poori ya aakhri 6-8 ank bhi chalenge):');
-  if(oid === null) return;
-  const q = normOid(oid);
-  if(!q || q.length < 4){ toast('Kam se kam 4 ank/akshar daalo'); return; }
-  // poori ID ya aakhri hissa — dono se dhundo
-  let found = entries.filter(x => { const n = normOid(x.orderId); return n && (n === q || n.endsWith(q) || n.includes(q)); });
-  if(!found.length){
-    toast('❌ Ye Order ID hisab me nahi mila');
-    if($('searchBox')){ $('searchBox').value = oid.trim(); }
-    go('entries', document.querySelector('nav button[data-pg="entries"]'));
-    renderEntries();
-    return;
-  }
-  if(found.length > 1){
-    toast('⚠️ ' + found.length + ' entries mili is ID se — Entries me dekh ke ↩️ dabao');
-    if($('searchBox')){ $('searchBox').value = oid.trim(); }
-    go('entries', document.querySelector('nav button[data-pg="entries"]'));
-    renderEntries();
-    return;
-  }
-  const e = found[0];
-  if(e.returned){ toast('Ye order pehle se RETURN laga hai'); return; }
-  if(!confirm('↩️ RETURN lagana hai?\n\n' + e.product + '\n' + e.date + ' | Rs ' + e.sale + '\nOrder: ' + e.orderId)) return;
-  markReturn(e.id, true);
+  openReturnEntry({});
+  toast('↩️ Jo pata hai wo bharo — Order ID, product, qty, return ka paisa. Kuch khali bhi chalega');
 }
 function markReturn(id, val){
   if(!askPin(val ? 'RETURN lagana hai' : 'RETURN hatana hai')) return;
@@ -1991,11 +1972,16 @@ function markReturn(id, val){
 let reviewResolve = null;
 let editingId = null;
 let retEntryMode = false;   // return ki alag entry ban rahi hai (paisa hisab se ghatega)
+function formMode(ret){
+  $('lSale').textContent = ret ? 'Return ka nuksan ₹ (kul)' : 'Bill price ₹';
+  $('costBox').style.display = ret ? 'none' : '';
+  $('fSale').dataset.auto = '0'; $('fCost').dataset.auto = '0';
+}
 function showReview(d){
   return new Promise(res=>{
     reviewResolve = res;
     editingId = null;
-    retEntryMode = false;
+    retEntryMode = false; formMode(false);
     $('reviewCard').style.display = 'block';
     $('reviewTitle').textContent = 'Entry check karo';
     $('fOrder').value = d.order_id || '';                     // ID na mile to khali — koi rukawat nahi
@@ -2011,7 +1997,7 @@ function showReview(d){
 function openReturnEntry(d){
   d = d || {};
   editingId = null;
-  retEntryMode = true;
+  retEntryMode = true; formMode(true);
   $('reviewCard').style.display = 'block';
   $('reviewTitle').textContent = '↩️ Return entry (paisa hisab se ghatega)';
   $('fOrder').value = (d.order_id || '').trim();
@@ -2021,13 +2007,12 @@ function openReturnEntry(d){
   $('fSale').value = d.total_price != null ? d.total_price : '';     // = wapas gaya paisa; na aaye to manual bharo
   $('fCost').value = '0';                                            // maal wapas aa gaya, lagat ka nuksan nahi
   $('dupWarn').style.display = 'none';
-  calcPreview();
+  fillRates();
   $('reviewCard').scrollIntoView({behavior:'smooth'});
-  toast('↩️ Wapas gaya paisa "Bill price" me bharo — na dikhe to manual daal do');
 }
 function openManual(){
   editingId = null;
-  retEntryMode = false;
+  retEntryMode = false; formMode(false);
   $('reviewCard').style.display = 'block';
   $('reviewTitle').textContent = 'Manual entry';
   $('fOrder').value = '';
@@ -2041,7 +2026,7 @@ function openEdit(id){
   const e = entries.find(x=>x.id===id);
   if(!e) return;
   editingId = id;
-  retEntryMode = (e.kind === 'ret');
+  retEntryMode = (e.kind === 'ret'); formMode(retEntryMode);
   go('scan', document.querySelector('nav button[data-pg="scan"]'));
   $('reviewCard').style.display = 'block';
   $('reviewTitle').textContent = '✎ Entry edit karo';
@@ -2055,13 +2040,22 @@ function openEdit(id){
   $('reviewCard').scrollIntoView({behavior:'smooth'});
 }
 function prodKey(name){ return (name||'').toLowerCase().replace(/[^a-z0-9]/g,'').slice(0,40); }
-function autoCost(){
+// ek baar rate bharo — agli baar qty x rate khud
+function fillRates(){
   const k = prodKey($('fProduct').value);
-  if(k && costs[k] != null && $('fCost').value === ''){
-    $('fCost').value = (costs[k] * (parseFloat($('fQty').value)||1)).toFixed(2);
+  const q = parseFloat($('fQty').value) || 1;
+  const put = (id, rate)=>{
+    const el = $(id);
+    if(rate == null || isNaN(rate)) return;
+    if(el.value === '' || el.dataset.auto === '1'){ el.value = (Math.round(rate * q * 100) / 100).toString(); el.dataset.auto = '1'; }
+  };
+  if(k){
+    if(retEntryMode){ put('fSale', retCosts[k]); }
+    else { put('fCost', costs[k]); put('fSale', prices[k]); }
   }
   calcPreview();
 }
+function autoCost(){ fillRates(); }
 function dupCheck(){
   const oid = $('fOrder').value.trim();
   const d = findDup(oid, $('fDate').value, $('fProduct').value, parseInt($('fQty').value)||1, parseFloat($('fSale').value)||0, editingId);
@@ -2081,6 +2075,7 @@ function saveEntry(){
   let cost = parseFloat($('fCost').value);
   let date = $('fDate').value;
   const qty = parseInt($('fQty').value)||1;
+  if(retEntryMode && !editingId){ saveReturnEntry(); return; }
   if(!product){ toast('Product ka naam daalo'); return; }
   if(isNaN(sale)){ toast('Bill price daalo'); return; }
   if(isNaN(cost)){
@@ -2113,15 +2108,47 @@ function saveEntry(){
   entries.sort((a,b)=> b.date.localeCompare(a.date) || b.ts - a.ts);
   persist('entries', entries);
   const k = prodKey(product);
-  if(k && !retEntryMode){ costs[k] = cost / qty; costNames[k] = product; persist('costs', costs); persist('costnames', costNames); pushMeta(); }
+  if(k && !retEntryMode){ costs[k] = cost / qty; prices[k] = sale / qty; costNames[k] = product; persist('costs', costs); persist('prices', prices); persist('costnames', costNames); pushMeta(); }
+  if(k && retEntryMode){ retCosts[k] = sale / qty; persist('retcosts', retCosts); pushMeta(); }
   retEntryMode = false;
   closeReview();
   renderEntries();
   renderHisab();
 }
+function saveReturnEntry(){
+  if(!askPin('Return chadhana hai')) return;
+  const oid = $('fOrder').value.trim();
+  const qty = parseInt($('fQty').value) || 1;
+  let loss = parseFloat($('fSale').value); if(isNaN(loss)) loss = 0;
+  const date = $('fDate').value || todayStr();
+  const no = normOid(oid);
+  const hit = no ? entries.filter(x => x.kind !== 'ret' && !x.returned && (normOid(x.orderId) === no || (no.length >= 6 && normOid(x.orderId).endsWith(no)))) : [];
+  let product = $('fProduct').value.trim();
+  let msg = '';
+  if(hit.length === 1){
+    const e = hit[0];
+    e.returned = true; pushEntry(e);
+    if(!product) product = e.product;
+    msg = '↩️ Order ' + (e.orderId || '') + ' RETURN laga (hisab se hata)';
+  }
+  if(!product) product = 'Return';
+  if(loss > 0 || !hit.length){
+    const r = { id: Date.now()+''+Math.floor(Math.random()*999), orderId: oid, date, product, qty, sale: loss, cost: 0, ts: Date.now(), kind: 'ret' };
+    entries.push(r); pushEntry(r);
+    msg = (msg ? msg + ' · ' : '↩️ Return chadha · ') + 'nuksan ' + fmt(loss);
+  }
+  const k = prodKey(product);
+  if(k && k !== 'return' && loss > 0){ retCosts[k] = loss / qty; persist('retcosts', retCosts); pushMeta(); }
+  entries.sort((a,b)=> b.date.localeCompare(a.date) || b.ts - a.ts);
+  persist('entries', entries);
+  retEntryMode = false;
+  closeReview(); renderEntries(); renderHisab();
+  toast(msg);
+}
 function cancelReview(){ closeReview(); }
 function closeReview(){
   $('reviewCard').style.display = 'none';
+  retEntryMode = false; formMode(false);
   editingId = null;
   if(reviewResolve){ reviewResolve(); reviewResolve = null; }
 }
