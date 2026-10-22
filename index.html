@@ -227,7 +227,7 @@
   <div class="brand">
     <div class="ball"></div>
     <div>
-      <h1>FK Profit Tracker <span style="font-size:.6rem;background:var(--seam);padding:2px 6px;border-radius:6px;vertical-align:middle">v31</span></h1>
+      <h1>FK Profit Tracker <span style="font-size:.6rem;background:var(--seam);padding:2px 6px;border-radius:6px;vertical-align:middle">v32</span></h1>
       <div class="sub">M/s Nav Durga Sports · DASH X</div>
     </div>
     <button class="sync-btn" id="lockBtn" style="display:none;margin-left:auto;margin-right:6px" onclick="toggleLock()">🔒 Locked</button>
@@ -252,6 +252,7 @@
       <button class="scan-sm gal" onclick="startScan('gal')">🖼️ Gallery (25–30)</button>
       <button class="scan-sm ret" onclick="startReturnScan()">↩️ Return scan</button>
       <button class="scan-sm retm" onclick="manualReturn()">⌨️ Return manual</button>
+      <button class="scan-sm retm" style="background:#a33" onclick="openReturnCost()">💸 Return cost<br><span style="font-size:.62rem;font-weight:600;opacity:.85">minus hoga</span></button>
       <button class="scan-sm man" onclick="openManual()">✍️ Manual entry<br><span style="font-size:.62rem;font-weight:600;opacity:.85">bina key</span></button>
     </div>
     <p class="hint" style="margin-top:12px">Ek saath 25–30 parchi ke photo select kar sakte ho — sab line se scan hongi. Photo seedha aur roshni me lo to result best aata hai.</p>
@@ -357,8 +358,8 @@
   <section class="page" id="pg-set">
     <div class="card" style="background:var(--ink);border-color:var(--ink)">
       <h2 style="color:#fff">📌 App Version</h2>
-      <p style="color:#7ee2ae;font-size:1.6rem;font-weight:900;margin:6px 0">v31 · Return manual + rate yaad</p>
-      <p class="hint" style="color:#9aa3ad">Agar yahan <b style="color:#7ee2ae">v31</b> dikh raha hai to ye NAYI app hai ✅<br>Ab app KHUD dekhti hai — nayi aane pe hara button dikha degi, ek tap me aa jayegi.<br>Purani me ye box hoga hi nahi.</p>
+      <p style="color:#7ee2ae;font-size:1.6rem;font-weight:900;margin:6px 0">v32 · Return cost button</p>
+      <p class="hint" style="color:#9aa3ad">Agar yahan <b style="color:#7ee2ae">v32</b> dikh raha hai to ye NAYI app hai ✅<br>Ab app KHUD dekhti hai — nayi aane pe hara button dikha degi, ek tap me aa jayegi.<br>Purani me ye box hoga hi nahi.</p>
       <button class="btn" style="background:rgba(255,255,255,.15);color:#fff;margin-top:10px" onclick="forceUpdate()">🔄 Nayi app laao (cache saaf karo)</button>
     </div>
     <div class="card">
@@ -1151,7 +1152,7 @@ async function lblAddAll(){
 }
 
 /* ================= auto update check ================= */
-const APP_VERSION = 31;   // har nayi file me ye badhta hai
+const APP_VERSION = 32;   // har nayi file me ye badhta hai
 async function checkForUpdate(){
   try{
     // apni hi file dobara laao (cache se nahi, taaza)
@@ -1952,6 +1953,13 @@ function handleReturn(d){
   if(!confirm('↩️ RETURN lagana hai?\n\n' + e.product + '\n' + e.date + ' | Rs ' + e.sale + '\nOrder: ' + e.orderId + '\n\nHisab me se ye order hat jayega (maal wapas aa gaya).')) return;
   markReturn(e.id, true);
 }
+var rcMode = false;   // return cost (shipping/penalty) — sirf minus, koi order nahi hatta
+function openReturnCost(){
+  openReturnEntry({}); rcMode = true;
+  $('reviewTitle').textContent = '💸 Return cost (hisab se minus)';
+  $('lSale').textContent = 'Return cost ₹ (kul)';
+  toast('💸 Product + qty bharo — rate ek baar daalo, agli baar khud aayega');
+}
 function manualReturn(){
   openReturnEntry({});
   toast('↩️ Jo pata hai wo bharo — Order ID, product, qty, return ka paisa. Kuch khali bhi chalega');
@@ -2050,7 +2058,7 @@ function fillRates(){
     if(el.value === '' || el.dataset.auto === '1'){ el.value = (Math.round(rate * q * 100) / 100).toString(); el.dataset.auto = '1'; }
   };
   if(k){
-    if(retEntryMode){ put('fSale', retCosts[k]); }
+    if(retEntryMode){ put('fSale', retCosts[(rcMode ? 'rc' : '') + k]); }
     else { put('fCost', costs[k]); put('fSale', prices[k]); }
   }
   calcPreview();
@@ -2122,7 +2130,7 @@ function saveReturnEntry(){
   let loss = parseFloat($('fSale').value); if(isNaN(loss)) loss = 0;
   const date = $('fDate').value || todayStr();
   const no = normOid(oid);
-  const hit = no ? entries.filter(x => x.kind !== 'ret' && !x.returned && (normOid(x.orderId) === no || (no.length >= 6 && normOid(x.orderId).endsWith(no)))) : [];
+  const hit = (no && !rcMode) ? entries.filter(x => x.kind !== 'ret' && !x.returned && (normOid(x.orderId) === no || (no.length >= 6 && normOid(x.orderId).endsWith(no)))) : [];
   let product = $('fProduct').value.trim();
   let msg = '';
   if(hit.length === 1){
@@ -2131,14 +2139,15 @@ function saveReturnEntry(){
     if(!product) product = e.product;
     msg = '↩️ Order ' + (e.orderId || '') + ' RETURN laga (hisab se hata)';
   }
-  if(!product) product = 'Return';
+  if(!product) product = rcMode ? 'Return cost' : 'Return';
+  if(rcMode && !/return cost/i.test(product)) product = 'Return cost: ' + product;
   if(loss > 0 || !hit.length){
     const r = { id: Date.now()+''+Math.floor(Math.random()*999), orderId: oid, date, product, qty, sale: loss, cost: 0, ts: Date.now(), kind: 'ret' };
     entries.push(r); pushEntry(r);
     msg = (msg ? msg + ' · ' : '↩️ Return chadha · ') + 'nuksan ' + fmt(loss);
   }
-  const k = prodKey(product);
-  if(k && k !== 'return' && loss > 0){ retCosts[k] = loss / qty; persist('retcosts', retCosts); pushMeta(); }
+  const rk = prodKey(product.replace(/^Return cost:\s*/i, ''));
+  if(rk && rk !== 'return' && rk !== 'returncost' && loss > 0){ retCosts[(rcMode ? 'rc' : '') + rk] = loss / qty; persist('retcosts', retCosts); pushMeta(); }
   entries.sort((a,b)=> b.date.localeCompare(a.date) || b.ts - a.ts);
   persist('entries', entries);
   retEntryMode = false;
@@ -2148,7 +2157,7 @@ function saveReturnEntry(){
 function cancelReview(){ closeReview(); }
 function closeReview(){
   $('reviewCard').style.display = 'none';
-  retEntryMode = false; formMode(false);
+  retEntryMode = false; rcMode = false; formMode(false);
   editingId = null;
   if(reviewResolve){ reviewResolve(); reviewResolve = null; }
 }
@@ -2316,7 +2325,7 @@ function showAllTime(){
       <div class="stat"><div class="lbl">Total Sale</div><div class="val">${fmt(sales)}</div></div>
       <div class="stat"><div class="lbl">Total Lagat</div><div class="val">${fmt(lagat)}</div></div>
       <div class="stat"><div class="lbl">Kul Katauti</div><div class="val">${fmt(kh)}</div></div>
-      ${retLoss>0?`<div class="stat wide" style="border-color:#b8860b;background:#fdf8ec"><div class="lbl" style="color:#8a6d0b">↩️ Return ka paisa (ghata)</div><div class="val" style="color:#b8860b">- ${fmt(retLoss)}</div></div>`:''}
+      ${retLoss>0?`<div class="stat wide" style="border-color:#b8860b;background:#fdf8ec"><div class="lbl" style="color:#8a6d0b">↩️ Return + Return cost (minus)</div><div class="val" style="color:#b8860b">- ${fmt(retLoss)}</div></div>`:''}
     </div>
     <div class="partner-row" style="margin-top:12px"><span>${esc(settings.p1)} (${r}%)</span><b>${fmt(net*r/100)}</b></div>
     <div class="partner-row"><span>${esc(settings.p2)} (${100-r}%)</span><b>${fmt(net*(100-r)/100)}</b></div>
@@ -2425,18 +2434,20 @@ function renderHisab(){
   const net = sales - lagat - kh - retLoss;
   // aaj ka hisab
   const tDate = todayStr();
-  const tRows = entries.filter(e=>e.date===tDate);
+  const tAll = entries.filter(e=>e.date===tDate);
+  const tRows = tAll.filter(e=>!e.returned && e.kind!=='ret');
+  const tMinus = tAll.filter(e=>e.kind==='ret' && !e.returned).reduce((a,e)=>a+e.sale,0);
   const tSale = tRows.reduce((a,e)=>a+e.sale,0);
-  const tProf = tRows.reduce((a,e)=>a+(e.sale-e.cost),0);
-  $('todayTxt').innerHTML = tRows.length
-    ? tRows.length + ' order · Sale ' + fmt(tSale) + ' · Profit ' + (tProf>=0?'+':'') + fmt(tProf)
+  const tProf = tRows.reduce((a,e)=>a+(e.sale-e.cost),0) - tMinus;
+  $('todayTxt').innerHTML = tAll.length
+    ? tRows.length + ' order · Sale ' + fmt(tSale) + (tMinus ? ' · Return -' + fmt(tMinus) : '') + ' · Profit ' + (tProf>=0?'+':'') + fmt(tProf)
     : 'Aaj koi entry nahi — Scan tab me jaake bill chadhao';
   const tq = rows.reduce((a,e)=>a+e.qty,0);
   $('statGrid').innerHTML = `
     <div class="stat wide hero"><div class="lbl">Net Profit (batwara isi ka)</div><div class="val" style="color:${net>=0?'#7ee2ae':'#ff9b9b'}">${fmt(net)}</div><div style="font-size:.72rem;color:#9aa3ad;margin-top:2px">${sales>0?('Margin: '+(net/sales*100).toFixed(1)+'%  ·  Avg profit/order: '+fmt(rows.length?net/rows.length:0)):''}</div></div>
     <div class="stat"><div class="lbl">Orders</div><div class="val">${rows.length}</div></div>
     <div class="stat"><div class="lbl">↩️ Return</div><div class="val" style="color:#b8860b">${retRows.length+retEnts.length}${(retRows.length+retEnts.length)?' (₹'+Math.round(retRows.reduce((a,e)=>a+e.sale,0)+retLoss).toLocaleString('en-IN')+')':''}</div></div>
-    ${retLoss>0?`<div class="stat wide" style="border-color:#b8860b;background:#fdf8ec"><div class="lbl" style="color:#8a6d0b">↩️ Return entries ka paisa (hisab se ghata)</div><div class="val" style="color:#b8860b">- ${fmt(retLoss)}</div></div>`:''}
+    ${retLoss>0?`<div class="stat wide" style="border-color:#b8860b;background:#fdf8ec"><div class="lbl" style="color:#8a6d0b">↩️ Return + Return cost (minus)</div><div class="val" style="color:#b8860b">- ${fmt(retLoss)}</div></div>`:''}
     <div class="stat"><div class="lbl">Total Qty</div><div class="val">${tq}</div></div>
     <div class="stat"><div class="lbl">Total Sale</div><div class="val">${fmt(sales)}</div></div>
     <div class="stat"><div class="lbl">Total Lagat</div><div class="val">${fmt(lagat)}</div></div>
