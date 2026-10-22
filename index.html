@@ -74,6 +74,14 @@
     display:flex;flex-direction:column;align-items:center;gap:3px;
   }
   nav button .ico{font-size:1.25rem;line-height:1}
+  .lbl-row{background:#fff;border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin-bottom:8px}
+  .lbl-row.dup{border-color:var(--seam);background:#fff7f7}
+  .lbl-top{display:flex;align-items:center;gap:8px;font-size:.72rem;color:var(--muted)}
+  .lbl-top input[type=checkbox]{width:20px;height:20px;flex:none;padding:0}
+  .lbl-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:8px}
+  .lbl-grid input{padding:8px;font-size:.88rem}
+  .lbl-grid label{margin:0 0 2px;font-size:.62rem}
+  .lbl-prof{margin-top:6px;font-size:.8rem;font-weight:700;text-align:right}
   nav button.active{color:var(--seam);font-weight:700}
   main{padding:16px 14px 24px;max-width:560px;margin:0 auto}
   .page{display:none}
@@ -219,7 +227,7 @@
   <div class="brand">
     <div class="ball"></div>
     <div>
-      <h1>FK Profit Tracker <span style="font-size:.6rem;background:var(--seam);padding:2px 6px;border-radius:6px;vertical-align:middle">v29</span></h1>
+      <h1>FK Profit Tracker <span style="font-size:.6rem;background:var(--seam);padding:2px 6px;border-radius:6px;vertical-align:middle">v30</span></h1>
       <div class="sub">M/s Nav Durga Sports · DASH X</div>
     </div>
     <button class="sync-btn" id="lockBtn" style="display:none;margin-left:auto;margin-right:6px" onclick="toggleLock()">🔒 Locked</button>
@@ -331,12 +339,26 @@
     </div>
   </section>
 
+  <!-- ============ LABEL TALLY PAGE ============ -->
+  <section class="page" id="pg-label">
+    <div class="card">
+      <h2>🏷️ Label Tally — PDF se hisab</h2>
+      <p class="hint">Flipkart / Meesho ka label PDF chuno. Saare order padh ke hisab ban jayega. Koi API / key nahi lagti.</p>
+      <label>Date (kis din ka hisab)</label>
+      <input id="lblDate" type="date">
+      <button class="scan-btn" style="margin-top:12px" onclick="document.getElementById('lblFile').click()">📄 Label PDF chuno (ek ya zyada)</button>
+      <input type="file" id="lblFile" accept="application/pdf,.pdf" multiple hidden onchange="lblFiles(this.files)">
+      <p class="hint" id="lblInfo" style="margin-top:8px"></p>
+    </div>
+    <div id="lblBody"></div>
+  </section>
+
   <!-- ============ SETTINGS PAGE ============ -->
   <section class="page" id="pg-set">
     <div class="card" style="background:var(--ink);border-color:var(--ink)">
       <h2 style="color:#fff">📌 App Version</h2>
-      <p style="color:#7ee2ae;font-size:1.6rem;font-weight:900;margin:6px 0">v29 · Torch camera fix</p>
-      <p class="hint" style="color:#9aa3ad">Agar yahan <b style="color:#7ee2ae">v29</b> dikh raha hai to ye NAYI app hai ✅<br>Ab app KHUD dekhti hai — nayi aane pe hara button dikha degi, ek tap me aa jayegi.<br>Purani me ye box hoga hi nahi.</p>
+      <p style="color:#7ee2ae;font-size:1.6rem;font-weight:900;margin:6px 0">v30 · Label Tally (PDF)</p>
+      <p class="hint" style="color:#9aa3ad">Agar yahan <b style="color:#7ee2ae">v30</b> dikh raha hai to ye NAYI app hai ✅<br>Ab app KHUD dekhti hai — nayi aane pe hara button dikha degi, ek tap me aa jayegi.<br>Purani me ye box hoga hi nahi.</p>
       <button class="btn" style="background:rgba(255,255,255,.15);color:#fff;margin-top:10px" onclick="forceUpdate()">🔄 Nayi app laao (cache saaf karo)</button>
     </div>
     <div class="card">
@@ -467,6 +489,7 @@
   <button class="active" data-pg="scan" onclick="go('scan',this)"><span class="ico">📷</span>Scan</button>
   <button data-pg="entries" onclick="go('entries',this)"><span class="ico">📋</span>Entries</button>
   <button data-pg="hisab" onclick="go('hisab',this)"><span class="ico">📊</span>Hisab</button>
+  <button data-pg="label" onclick="go('label',this)"><span class="ico">🏷️</span>Label</button>
   <button data-pg="set" onclick="go('set',this)"><span class="ico">⚙️</span>Settings</button>
 </nav>
 
@@ -778,8 +801,355 @@ async function maybeAutoTg(){
   }catch(e){}
 }
 
+/* ================= LABEL TALLY (PDF) ================= */
+let lblRows = [];
+let prices = {};            // per-piece sale price: product key -> number
+let lblAlias = {};          // label ka raw naam -> apna product naam
+function loadLblMaps(){
+  try{ prices = JSON.parse(localStorage.getItem('fpt:prices') || '{}') || {}; }catch(e){ prices = {}; }
+  try{ lblAlias = JSON.parse(localStorage.getItem('fpt:lblalias') || '{}') || {}; }catch(e){ lblAlias = {}; }
+}
+loadLblMaps();
+
+/* ---------- PDF reader (internet se ek baar aata hai, key/API nahi lagti) ---------- */
+let pdfjsReady = null;
+function loadPdfJs(){
+  if(window.pdfjsLib) return Promise.resolve(window.pdfjsLib);
+  if(pdfjsReady) return pdfjsReady;
+  const V = '3.11.174';
+  const base = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/' + V + '/';
+  pdfjsReady = new Promise((res, rej)=>{
+    const s = document.createElement('script');
+    s.src = base + 'pdf.min.js';
+    s.onload = async ()=>{
+      const lib = window.pdfjsLib;
+      if(!lib){ pdfjsReady = null; rej(new Error('net')); return; }
+      try{
+        const r = await fetch(base + 'pdf.worker.min.js');
+        const t = await r.text();
+        lib.GlobalWorkerOptions.workerSrc = URL.createObjectURL(new Blob([t], {type:'text/javascript'}));
+      }catch(e){
+        lib.GlobalWorkerOptions.workerSrc = base + 'pdf.worker.min.js';
+      }
+      res(lib);
+    };
+    s.onerror = ()=>{ pdfjsReady = null; rej(new Error('net')); };
+    document.head.appendChild(s);
+  });
+  return pdfjsReady;
+}
+async function pdfPages(file){
+  const lib = await loadPdfJs();
+  const buf = await file.arrayBuffer();
+  const doc = await lib.getDocument({data: buf}).promise;
+  const out = [];
+  for(let p = 1; p <= doc.numPages; p++){
+    const page = await doc.getPage(p);
+    const tc = await page.getTextContent();
+    const items = tc.items.filter(i => i.str && i.str.trim() !== '').map(i => ({s:i.str, x:i.transform[4], y:i.transform[5]}));
+    items.sort((a,b)=> (b.y - a.y) || (a.x - b.x));
+    const lines = []; let cur = null;
+    for(const it of items){
+      if(cur && Math.abs(cur.y - it.y) <= 3){ cur.parts.push(it); }
+      else { cur = {y: it.y, parts: [it]}; lines.push(cur); }
+    }
+    out.push(lines.map(l => l.parts.sort((a,b)=>a.x-b.x).map(q=>q.s).join(' ')).join('\n'));
+  }
+  return out;
+}
+
+/* ---------- label text se order nikalna ---------- */
+function cleanTxt(s){ return (s||'').replace(/\|/g,' ').replace(/\s+/g,' ').trim(); }
+function numOf(s){ const n = parseFloat(String(s == null ? '' : s).replace(/,/g,'')); return isNaN(n) ? 0 : n; }
+
+function labelPlatform(t){
+  if(/SKU\s+Size\s+Qty\s+Color/i.test(t) || /meesho/i.test(t)) return 'Meesho';
+  if(/flipkart|e-?kart|\bOD\d{14,}/i.test(t)) return 'Flipkart';
+  if(/amazon/i.test(t)) return 'Amazon';
+  return 'Label';
+}
+function labelIds(t){
+  const found = [];
+  const push = (v, i)=>{ if(!found.some(f => f.id === v)) found.push({id: v, pos: i}); };
+  let m, re = /\bOD\d{14,22}\b/g;
+  while((m = re.exec(t))) push(m[0], m.index);
+  re = /\b\d{3}-\d{7}-\d{7}\b/g;
+  while((m = re.exec(t))) push(m[0], m.index);
+  if(!found.length){
+    re = /\b\d{14,20}_\d{1,2}\b/g;                      // Meesho: 344447229558490432_1
+    while((m = re.exec(t))) push(m[0], m.index);
+  }
+  if(!found.length){
+    re = /Order\s*(?:No\.?|Number|ID|Id)\s*[:.\-]?\s*([A-Za-z0-9_\-]{8,28})/g;
+    while((m = re.exec(t))) push(m[1], m.index);
+  }
+  found.sort((a,b)=>a.pos - b.pos);
+  return found;
+}
+// qty ke barabar ka akela ank naam se hata do ("pack of 3" jaisa ank na chhedo)
+function dropQtyToken(desc, qty){
+  const tk = desc.split(' ');
+  for(let i = 0; i < tk.length; i++){
+    if(tk[i] === String(qty) && !/^(?:of|pack|set|combo|x|size|no|no\.)$/i.test(tk[i-1] || '')){ tk.splice(i, 1); break; }
+  }
+  return tk.join(' ');
+}
+// Flipkart: "SKU ID | Description QTY" ke neeche "1 SKU | Description qty", phir AWB number
+function flipkartItem(seg){
+  const h = seg.search(/SKU\s*ID\s*\|?\s*Description\s*QTY/i);
+  if(h < 0) return {name: '', qty: 1};
+  let chunk = seg.slice(h).replace(/^[^\n]*\n?/, '');
+  chunk = chunk.split(/\b(?:[A-Z]{3,5}\d{9,}|Not\s*for\s*resale|Tax\s*Invoice)\b/)[0];
+  chunk = chunk.replace(/\s+/g, ' ').trim().replace(/^\d{1,2}\s+(?=\S)/, '');
+  const parts = chunk.split('|');
+  const sku = (parts[0] || '').trim();
+  let desc = parts.slice(1).join(' ').trim();
+  let qty = 0;
+  const tq = seg.match(/TOTAL\s*QTY\s*[:\-]?\s*(\d{1,3})/i);       // invoice wala total qty sabse pakka
+  if(tq) qty = parseInt(tq[1]);
+  if(!qty){ const m = desc.match(/\s(\d{1,2})(?:\s|$)/); qty = m ? parseInt(m[1]) : 1; }
+  qty = Math.max(1, qty || 1);
+  desc = dropQtyToken(desc, qty);
+  return {name: cleanTxt(sku + ' ' + desc), qty};
+}
+// Meesho: "SKU Size Qty Color Order No." ke neeche "SKU Size Qty Color OrderNo"
+function meeshoItem(seg){
+  const j = seg.search(/SKU\s+Size\s+Qty\s+Color\s+Order\s*No\.?/i);
+  if(j < 0) return {name: '', qty: 1};
+  const row = cleanTxt(seg.slice(j).split('\n')[1] || '');
+  const m = row.match(/^(.*?)\s+(Free\s*Size|NA|N\/A|[XSML]{1,3}|\d{1,2})\s+(\d{1,2})\s+(.+?)\s+\d{14,20}_\d+$/i);
+  if(m) return {name: cleanTxt(m[1]), qty: Math.max(1, parseInt(m[3]))};
+  return {name: row.replace(/\d{14,20}_\d+/, '').trim(), qty: 1};
+}
+function meeshoTotal(seg){
+  const m = seg.match(/^\s*Total\s+(?:Rs\.?\s*[\d,.]+\s*)+$/mi);
+  if(!m) return 0;
+  const nums = m[0].match(/\d[\d,]*\.?\d*/g) || [];
+  return nums.length ? numOf(nums[nums.length - 1]) : 0;
+}
+function labelTotal(seg){
+  let best = 0, m;
+  const re = /(?:Grand\s*Total|Total\s*(?:Price|Amount|Payable)|TOTAL\s*(?:PRICE|AMOUNT|PAYABLE))\s*[:\-]?\s*(?:Rs\.?|INR|₹)?\s*([\d,]+(?:\.\d{1,2})?)/gi;
+  while((m = re.exec(seg))){ const v = numOf(m[1]); if(v >= 5 && v < 100000) best = v; }
+  return best;
+}
+// kisi aur format ke liye halka andaaza
+function genericItem(seg){
+  let raw = '';
+  const i = seg.search(/Description/i);
+  if(i >= 0){
+    let chunk = seg.slice(i + 11);
+    chunk = chunk.split(/\b(?:Total|TOTAL|Sold\s*By|Not\s*for|Tax|Invoice|Handling|Printed|Order\s*ID|Order\s*Id|AWB|Payment|Courier|Declaration)\b/)[0];
+    raw = cleanTxt(chunk.replace(/\bQTY\b|\bQty\b|\bSKU\s*ID\b|\bSKU\b|\bPrice\b|\bAmount\b/g, ' '));
+  }
+  const m = raw.match(/^(.*\S)\s+(\d{1,2})$/);
+  if(m && !/(?:\bof|\bpack|\bset|\bcombo|\bpcs|\bpc|\bx|\bsize)$/i.test(m[1])) return {name: m[1].slice(0, 140), qty: Math.max(1, parseInt(m[2]))};
+  return {name: raw.slice(0, 140), qty: 1};
+}
+// pages = har page ka text. Return: {rows, skipped}
+function parseLabelPages(pages, fileName){
+  const rows = []; let skipped = 0;
+  const byId = {};
+  pages.forEach(t => {
+    t = t || '';
+    const ids = labelIds(t);
+    if(!ids.length){ skipped++; return; }
+    const plat = labelPlatform(t);
+    ids.forEach((it, idx)=>{
+      const start = idx === 0 ? 0 : it.pos;
+      const end = idx + 1 < ids.length ? ids[idx + 1].pos : t.length;
+      const seg = ids.length === 1 ? t : t.slice(start, end);
+      let nq, total;
+      if(plat === 'Meesho'){ nq = meeshoItem(seg); total = meeshoTotal(seg); }
+      else { nq = flipkartItem(seg); total = labelTotal(seg); }
+      if(!nq.name){ nq = genericItem(seg); if(!total) total = labelTotal(seg); }
+      const rawKey = prodKey(nq.name);
+      const ex = byId[it.id];
+      if(ex){                                            // label + invoice ek hi order: mila do
+        if(!ex.product && nq.name){ ex.product = lblAlias[rawKey] || nq.name; ex.rawKey = rawKey; ex.qty = nq.qty; }
+        if(ex.pp === '' && total > 0) ex.pp = Math.round(total / ex.qty * 100) / 100;
+        return;
+      }
+      const name = lblAlias[rawKey] || nq.name;
+      const k = prodKey(name);
+      const row = {
+        id: it.id, platform: plat, rawKey, product: name, qty: nq.qty,
+        pp: total > 0 ? Math.round(total / nq.qty * 100) / 100 : (prices[k] != null ? prices[k] : ''),
+        cp: (costs[k] != null ? costs[k] : ''),
+        inc: true, file: fileName || ''
+      };
+      byId[it.id] = row;
+      rows.push(row);
+    });
+  });
+  return {rows, skipped};
+}
+
+/* ---------- screen ---------- */
+function lblSale(r){ return (r.pp === '' ? 0 : r.pp) * r.qty; }
+function lblCost(r){ return (r.cp === '' ? 0 : r.cp) * r.qty; }
+function lblSummaryHtml(){
+  const inc = lblRows.filter(r => r.inc);
+  const sale = inc.reduce((a,r)=>a + lblSale(r), 0);
+  const cost = inc.reduce((a,r)=>a + lblCost(r), 0);
+  const qty = inc.reduce((a,r)=>a + r.qty, 0);
+  const net = sale - cost;
+  const missing = inc.filter(r => r.pp === '' || r.cp === '' || !r.product).length;
+  const by = {};
+  inc.forEach(r => {
+    const k = prodKey(r.product) || 'x';
+    const b = by[k] || (by[k] = {name: r.product || '(naam nahi)', n: 0, q: 0, s: 0, c: 0});
+    b.n++; b.q += r.qty; b.s += lblSale(r); b.c += lblCost(r);
+  });
+  const lines = Object.keys(by).map(k => {
+    const b = by[k], p = b.s - b.c;
+    return '<div class="partner-row" style="font-size:.8rem;gap:8px"><span style="flex:1;min-width:0">' + esc(b.name) + '<br><span style="color:var(--muted);font-size:.7rem">' + b.n + ' order · qty ' + b.q + '</span></span><span style="text-align:right"><b>' + fmt(b.s) + '</b><br><span style="font-size:.72rem;color:' + (p >= 0 ? 'var(--green)' : 'var(--seam)') + '">' + (p >= 0 ? '+' : '') + fmt(p) + '</span></span></div>';
+  }).join('');
+  return '<div class="stat-grid">' +
+    '<div class="stat wide hero"><div class="lbl">Aaj ka profit (label se)</div><div class="val" style="color:' + (net >= 0 ? '#7ee2ae' : '#ff9b9b') + '">' + fmt(net) + '</div></div>' +
+    '<div class="stat"><div class="lbl">Orders</div><div class="val">' + inc.length + '</div></div>' +
+    '<div class="stat"><div class="lbl">Total Qty</div><div class="val">' + qty + '</div></div>' +
+    '<div class="stat"><div class="lbl">Total Sale</div><div class="val">' + fmt(sale) + '</div></div>' +
+    '<div class="stat"><div class="lbl">Total Lagat</div><div class="val">' + fmt(cost) + '</div></div></div>' +
+    (missing ? '<div class="badge-dup">⚠️ ' + missing + ' order me price / lagat / naam khali hai — neeche bhar do</div>' : '') +
+    (lines ? '<div style="margin-top:10px">' + lines + '</div>' : '');
+}
+function lblRefreshSummary(){ const b = $('lblSummary'); if(b) b.innerHTML = lblSummaryHtml(); }
+function lblRefreshRow(i){
+  const r = lblRows[i]; if(!r) return;
+  const el = $('lprof-' + i);
+  if(el){
+    const p = lblSale(r) - lblCost(r);
+    el.textContent = (r.pp === '' || r.cp === '') ? 'Profit: —' : 'Profit: ' + (p >= 0 ? '+' : '') + fmt(p);
+    el.style.color = p >= 0 ? 'var(--green)' : 'var(--seam)';
+  }
+}
+function renderLabel(){
+  const box = $('lblBody'); if(!box) return;
+  if(!$('lblDate').value) $('lblDate').value = todayStr();
+  if(!lblRows.length){ box.innerHTML = ''; return; }
+  let html = '<div class="card" style="margin-top:14px"><div id="lblSummary">' + lblSummaryHtml() + '</div>' +
+    '<button class="btn btn-save" onclick="lblAddAll()">✅ Sab entries me jodo</button>' +
+    '<button class="btn btn-ghost" onclick="lblClear()">🗑️ Saaf karo</button></div>';
+  lblRows.forEach((r, i)=>{
+    const dup = !!findDup(r.id);
+    html += '<div class="lbl-row' + (dup ? ' dup' : '') + '">' +
+      '<div class="lbl-top"><input type="checkbox" ' + (r.inc ? 'checked' : '') + ' onchange="lblToggle(' + i + ',this.checked)">' +
+      '<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(r.platform) + ' · ' + esc(r.id) + '</span>' +
+      (dup ? '<span class="chip-dup">DOUBLE</span>' : '') + '</div>' +
+      '<input id="lpn-' + i + '" style="margin-top:8px" value="' + esc(r.product) + '" placeholder="Product ka naam" onchange="lblSet(' + i + ',\'product\',this.value)">' +
+      '<div class="lbl-grid">' +
+      '<div><label>Qty</label><input id="lq-' + i + '" type="number" min="1" value="' + r.qty + '" onchange="lblSet(' + i + ',\'qty\',this.value)"></div>' +
+      '<div><label>Price ₹/pc</label><input id="lpp-' + i + '" type="number" step="0.01" value="' + (r.pp === '' ? '' : r.pp) + '" onchange="lblSet(' + i + ',\'pp\',this.value)"></div>' +
+      '<div><label>Lagat ₹/pc</label><input id="lcp-' + i + '" type="number" step="0.01" value="' + (r.cp === '' ? '' : r.cp) + '" onchange="lblSet(' + i + ',\'cp\',this.value)"></div>' +
+      '</div><div class="lbl-prof" id="lprof-' + i + '"></div></div>';
+  });
+  box.innerHTML = html;
+  lblRows.forEach((r, i)=> lblRefreshRow(i));
+}
+function lblToggle(i, on){ if(lblRows[i]){ lblRows[i].inc = !!on; lblRefreshSummary(); } }
+function lblSetInput(id, v){ const el = $(id); if(el) el.value = (v === '' || v == null) ? '' : v; }
+function lblSet(i, f, v){
+  const r = lblRows[i]; if(!r) return;
+  if(f === 'product'){
+    const before = r.product;
+    r.product = (v || '').trim();
+    const k = prodKey(r.product);
+    if(r.rawKey && r.product){ lblAlias[r.rawKey] = r.product; persist('lblalias', lblAlias); pushMeta(); }
+    if(r.cp === '' && costs[k] != null){ r.cp = costs[k]; lblSetInput('lcp-' + i, r.cp); }
+    if(r.pp === '' && prices[k] != null){ r.pp = prices[k]; lblSetInput('lpp-' + i, r.pp); }
+    lblRows.forEach((o, j)=>{                             // jin orders ka label-naam same hai unka naam bhi badlo
+      if(j !== i && r.product && o.rawKey === r.rawKey && o.product === before){
+        o.product = r.product; lblSetInput('lpn-' + j, o.product);
+        if(o.cp === '' && costs[k] != null){ o.cp = costs[k]; lblSetInput('lcp-' + j, o.cp); }
+        if(o.pp === '' && prices[k] != null){ o.pp = prices[k]; lblSetInput('lpp-' + j, o.pp); }
+        lblRefreshRow(j);
+      }
+    });
+  } else if(f === 'qty'){
+    r.qty = Math.max(1, parseInt(v) || 1);
+    lblSetInput('lq-' + i, r.qty);
+  } else if(f === 'pp' || f === 'cp'){
+    const old = r[f];
+    const nv = (v === '' || isNaN(parseFloat(v))) ? '' : parseFloat(v);
+    r[f] = nv;
+    const k = prodKey(r.product);
+    if(nv !== '' && k){
+      if(f === 'pp'){ prices[k] = nv; persist('prices', prices); pushMeta(); }
+      else { costs[k] = nv; costNames[k] = r.product; persist('costs', costs); persist('costnames', costNames); pushMeta(); }
+      lblRows.forEach((o, j)=>{                           // isi product ke baaki orders me bhi bhar do
+        if(j !== i && prodKey(o.product) === k && (o[f] === '' || o[f] === old)){
+          o[f] = nv; lblSetInput((f === 'pp' ? 'lpp-' : 'lcp-') + j, nv); lblRefreshRow(j);
+        }
+      });
+    }
+  }
+  lblRefreshRow(i);
+  lblRefreshSummary();
+}
+function lblClear(){
+  if(lblRows.length && !confirm('Ye saari padhi hui list hata dun? (entries pe asar nahi padega)')) return;
+  lblRows = []; $('lblInfo').textContent = ''; renderLabel();
+}
+async function lblFiles(files){
+  if(!files || !files.length) return;
+  const info = $('lblInfo');
+  const have = {}; lblRows.forEach(r => have[r.id] = true);
+  let added = 0, skipped = 0, empty = 0, notes = [];
+  for(let f = 0; f < files.length; f++){
+    const file = files[f];
+    info.textContent = '⏳ Padh raha hoon ' + (f + 1) + '/' + files.length + ' — ' + file.name;
+    try{
+      const pages = await pdfPages(file);
+      if(!pages.some(t => (t || '').trim().length > 20)){ empty++; notes.push(file.name + ': text nahi mila (photo wali PDF)'); continue; }
+      const res = parseLabelPages(pages, file.name);
+      skipped += res.skipped;
+      res.rows.forEach(r => { if(!have[r.id]){ have[r.id] = true; r.inc = !findDup(r.id); lblRows.push(r); added++; } });
+      notes.push(file.name + ': ' + res.rows.length + ' order');
+    }catch(e){
+      notes.push(file.name + ': ' + (e && e.message === 'net' ? 'PDF reader nahi aaya — internet chalu karo' : 'padh nahi payi'));
+    }
+  }
+  $('lblFile').value = '';
+  info.innerHTML = (added ? '✅ ' + added + ' order mile' : '❌ Koi order nahi mila') +
+    (skipped ? ' · ' + skipped + ' page me order ID nahi tha' : '') + '<br>' + notes.map(esc).join('<br>');
+  renderLabel();
+}
+async function lblAddAll(){
+  const todo = lblRows.filter(r => r.inc);
+  if(!todo.length){ toast('Koi order chuna nahi'); return; }
+  const bad = todo.filter(r => r.pp === '' || r.cp === '' || !r.product).length;
+  if(bad){ toast('⚠️ ' + bad + ' order me price / lagat / naam khali — pehle bhar do'); return; }
+  const date = $('lblDate').value || todayStr();
+  const fresh = []; let dups = 0;
+  todo.forEach((r, i)=>{
+    if(findDup(r.id)){ dups++; return; }
+    const e = { id: Date.now() + '' + Math.floor(Math.random() * 9999) + i, orderId: r.id, date,
+      product: r.product, qty: r.qty,
+      sale: Math.round(r.pp * r.qty * 100) / 100, cost: Math.round(r.cp * r.qty * 100) / 100, ts: Date.now() + i };
+    entries.push(e); fresh.push(e);
+  });
+  if(!fresh.length){ toast('Sab pehle se chadhe hue hain (' + dups + ' double)'); return; }
+  entries.sort((a,b)=> b.date.localeCompare(a.date) || b.ts - a.ts);
+  persist('entries', entries);
+  todo.forEach(r => { const k = prodKey(r.product); if(k){ costs[k] = r.cp; costNames[k] = r.product; prices[k] = r.pp; } });
+  persist('costs', costs); persist('costnames', costNames); persist('prices', prices);
+  pushMeta();
+  await Promise.all(fresh.map(pushEntry));
+  const gone = {}; todo.forEach(r => gone[r.id] = true);
+  lblRows = lblRows.filter(r => !gone[r.id]);
+  renderEntries();
+  const sale = fresh.reduce((a,e)=>a + e.sale, 0), cost = fresh.reduce((a,e)=>a + e.cost, 0);
+  $('lblInfo').innerHTML = '✅ <b>' + fresh.length + ' entry chadh gayi</b> (' + date + ') · Sale ' + fmt(sale) + ' · Profit ' + fmt(sale - cost) +
+    (dups ? '<br>' + dups + ' double skip hue' : '') +
+    '<br><button class="day-pdf" style="margin-top:8px" onclick="tgSendToday()">📲 Telegram pe bhejo</button> ' +
+    '<button class="day-pdf" style="margin-top:8px" onclick="go(\'hisab\',document.querySelector(\'nav button[data-pg=hisab]\'))">📊 Hisab dekho</button>';
+  renderLabel();
+  toast('✅ ' + fresh.length + ' entry chadh gayi');
+}
+
 /* ================= auto update check ================= */
-const APP_VERSION = 29;   // har nayi file me ye badhta hai
+const APP_VERSION = 30;   // har nayi file me ye badhta hai
 async function checkForUpdate(){
   try{
     // apni hi file dobara laao (cache se nahi, taaza)
@@ -837,7 +1207,7 @@ async function fbDel(path){
   catch(e){ return false; }
 }
 function pushEntry(e){ return fbPut('/entries/' + e.id, e); }
-function pushMeta(){ return fbPut('/meta', {costs, costNames, kharcha, settings}); }
+function pushMeta(){ return fbPut('/meta', {costs, costNames, kharcha, settings, prices, lblAlias}); }
 async function pullAll(silent){
   const b = fbBase(); if(!b) return;
   setDot('busy','Sync...');
@@ -855,6 +1225,8 @@ async function pullAll(silent){
         if(d.meta.costs) { costs = d.meta.costs; persist('costs', costs); }
         if(d.meta.costNames) { costNames = d.meta.costNames; persist('costnames', costNames); }
         if(d.meta.kharcha) { kharcha = d.meta.kharcha; persist('kharcha', kharcha); }
+        if(d.meta.prices) { prices = d.meta.prices; persist('prices', prices); }
+        if(d.meta.lblAlias) { lblAlias = d.meta.lblAlias; persist('lblalias', lblAlias); }
         if(d.meta.settings) { settings = d.meta.settings; persist('settings', settings);
           $('sP1').value = settings.p1; $('sP2').value = settings.p2; $('sRatio').value = settings.ratio; }
       }
@@ -920,6 +1292,7 @@ function go(pg, btn){
   if(pg==='hisab') renderHisab();
   if(pg==='entries') renderEntries();
   if(pg==='set') renderCosts();
+  if(pg==='label') renderLabel();
 }
 function toast(msg){
   const t = $('toast'); t.textContent = msg; t.classList.add('show');
