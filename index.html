@@ -237,7 +237,7 @@
   <div class="brand">
     <div class="ball"></div>
     <div>
-      <h1>FK Profit Tracker <span style="font-size:.6rem;background:var(--seam);padding:2px 6px;border-radius:6px;vertical-align:middle">v34</span></h1>
+      <h1>FK Profit Tracker <span style="font-size:.6rem;background:var(--seam);padding:2px 6px;border-radius:6px;vertical-align:middle">v35</span></h1>
       <div class="sub">M/s Nav Durga Sports · DASH X</div>
     </div>
     <button class="sync-btn" id="lockBtn" style="display:none;margin-left:auto;margin-right:6px" onclick="toggleLock()">🔒 Locked</button>
@@ -369,19 +369,15 @@
   <section class="page" id="pg-set">
     <div class="card" style="background:var(--ink);border-color:var(--ink)">
       <h2 style="color:#fff">📌 App Version</h2>
-      <p style="color:#7ee2ae;font-size:1.6rem;font-weight:900;margin:6px 0">v34 · Return hamesha minus</p>
-      <p class="hint" style="color:#9aa3ad">Agar yahan <b style="color:#7ee2ae">v34</b> dikh raha hai to ye NAYI app hai ✅<br>Ab app KHUD dekhti hai — nayi aane pe hara button dikha degi, ek tap me aa jayegi.<br>Purani me ye box hoga hi nahi.</p>
+      <p style="color:#7ee2ae;font-size:1.6rem;font-weight:900;margin:6px 0">v35 · Sab device ek hisab (auto)</p>
+      <p class="hint" style="color:#9aa3ad">Agar yahan <b style="color:#7ee2ae">v35</b> dikh raha hai to ye NAYI app hai ✅<br>Ab app KHUD dekhti hai — nayi aane pe hara button dikha degi, ek tap me aa jayegi.<br>Purani me ye box hoga hi nahi.</p>
       <button class="btn" style="background:rgba(255,255,255,.15);color:#fff;margin-top:10px" onclick="forceUpdate()">🔄 Nayi app laao (cache saaf karo)</button>
     </div>
     <div class="card">
       <h2>🔄 Partner Sync (2 phone, ek hisab)</h2>
       <p class="hint"><b>✅ Sync pehle se chalu hai — kuch daalne ki zaroorat nahi!</b> Ye app aur partner ka app khud jud jate hain, entries dono me live aati hain. Neeche ke khane sirf tab chhedo jab Claude bole. Bas Gemini key (neeche) daal do aur scan shuru karo.</p>
-      <label>Firebase Database URL</label>
-      <input id="sFbUrl" placeholder="https://apna-project-default-rtdb.firebaseio.com">
-      <label>Shop code (dono phone me bilkul same, lamba rakho)</label>
-      <input id="sFbCode" type="password" placeholder="jaise: navdurga-dashx-9271">
-      <button class="btn btn-save" onclick="saveFb()">Save + Sync test</button>
-      <p class="hint" id="fbStatus" style="margin-top:8px">✅ Sync chalu hai (built-in).</p>
+      <input id="sFbUrl" type="hidden"><input id="sFbCode" type="hidden">
+      <p class="hint" id="fbStatus" style="margin-top:8px">✅ Sync fixed hai — laptop, mobile, partner sab ek hi hisab me. Kuch badalna nahi.</p>
     </div>
     <div class="card">
       <h2>🤖 Scan engine (kaun bill padhega)</h2>
@@ -554,8 +550,13 @@ function loadAll(){
   try{ const s = localStorage.getItem('fpt:settings'); if(s) settings = JSON.parse(s); }catch(e){}
   apiKey = localStorage.getItem('fpt:key') || '';
   claudeKey = localStorage.getItem('fpt:ckey') || '';
-  fbUrl  = localStorage.getItem('fpt:fburl')  || FB_DEFAULT_URL;
-  fbCode = localStorage.getItem('fpt:fbcode') || FB_DEFAULT_CODE;
+  // sab device ek hi hisab: URL + shop code hamesha fixed (purana galat code ho to entries main hisab me chadh jaati hain)
+  fbUrl = FB_DEFAULT_URL; fbCode = FB_DEFAULT_CODE;
+  const oldCode = localStorage.getItem('fpt:fbcode');
+  if(oldCode && oldCode !== FB_DEFAULT_CODE){
+    try{ const p = JSON.parse(localStorage.getItem('fpt:pending') || '[]'); JSON.parse(localStorage.getItem('fpt:entries') || '[]').forEach(e => { if(e && e.id && p.indexOf(String(e.id)) < 0) p.push(String(e.id)); }); localStorage.setItem('fpt:pending', JSON.stringify(p)); }catch(e){}
+  }
+  localStorage.setItem('fpt:fburl', FB_DEFAULT_URL); localStorage.setItem('fpt:fbcode', FB_DEFAULT_CODE);
   if($('sFbUrl')) $('sFbUrl').value = fbUrl;
   tgTok  = localStorage.getItem('fpt:tgtok')  || '';
   tgChat = localStorage.getItem('fpt:tgchat') || TG_DEFAULT_CHAT;
@@ -1163,7 +1164,7 @@ async function lblAddAll(){
 }
 
 /* ================= auto update check ================= */
-const APP_VERSION = 34;   // har nayi file me ye badhta hai
+const APP_VERSION = 35;   // har nayi file me ye badhta hai
 async function checkForUpdate(){
   try{
     // apni hi file dobara laao (cache se nahi, taaza)
@@ -1220,19 +1221,42 @@ async function fbDel(path){
   try{ const r = await fetch(b + path + '.json', {method:'DELETE'}); return r.ok; }
   catch(e){ return false; }
 }
-function pushEntry(e){ return fbPut('/entries/' + e.id, e); }
+// jo entry server tak nahi pahunchi wo 'pending' me rehti hai — agle sync me khud chadh jaati hai, kabhi gayab nahi hoti
+function getPending(){ try{ return JSON.parse(localStorage.getItem('fpt:pending') || '[]'); }catch(e){ return []; } }
+function setPending(p){ try{ localStorage.setItem('fpt:pending', JSON.stringify(p)); }catch(e){} }
+async function pushEntry(e){
+  const id = String(e.id), p = getPending();
+  if(p.indexOf(id) < 0){ p.push(id); setPending(p); }
+  const ok = await fbPut('/entries/' + e.id, e);
+  if(ok) setPending(getPending().filter(x => x !== id));
+  return ok;
+}
+async function flushPending(b){
+  const p = getPending(); if(!p.length) return;
+  const left = [];
+  for(const id of p){
+    const e = entries.find(x => String(x.id) === id);
+    if(!e) continue;                                   // delete ho chuki
+    try{ const r = await fetch(b + '/entries/' + e.id + '.json', {method:'PUT', body: JSON.stringify(e)}); if(!r.ok) left.push(id); }
+    catch(err){ left.push(id); }
+  }
+  setPending(left);
+}
 function pushMeta(){ return fbPut('/meta', {costs, costNames, kharcha, settings, prices, lblAlias, retCosts}); }
 async function pullAll(silent){
   const b = fbBase(); if(!b) return;
   setDot('busy','Sync...');
   try{
+    await flushPending(b);                           // pehle bachi hui entries upar bhejo
     const r = await fetch(b + '.json');
     if(!r.ok) throw 0;
     const d = await r.json();
     {
       // SERVER hi sach hai: entries wahan jitni hain, yahan bhi utni hi rahengi.
       // Sab delete ho gayin to yahan bhi khali — delete ab DONO phone me failta hai.
+      const keep = getPending().map(id => entries.find(x => String(x.id) === id)).filter(Boolean);   // abhi tak nahi pahunchi — mitao mat
       entries = sanitize(Object.values((d && d.entries) || {}));
+      keep.forEach(e => { if(!entries.some(x => x.id === e.id)) entries.push(e); });
       entries.sort((a,b2)=> b2.date.localeCompare(a.date) || b2.ts - a.ts);
       persist('entries', entries);
       if(d.meta){
@@ -1261,9 +1285,7 @@ async function pushEverything(){
   await pushMeta();
 }
 async function saveFb(){
-  fbUrl = $('sFbUrl').value.trim();
-  const c = $('sFbCode').value.trim();
-  if(c) fbCode = c;                       // khali chhoda to purana code hi rahega
+  fbUrl = FB_DEFAULT_URL; fbCode = FB_DEFAULT_CODE;      // hamesha fixed
   localStorage.setItem('fpt:fburl', fbUrl);
   localStorage.setItem('fpt:fbcode', fbCode);
   $('sFbCode').value = '';
