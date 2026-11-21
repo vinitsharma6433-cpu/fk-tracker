@@ -237,7 +237,7 @@
   <div class="brand">
     <div class="ball"></div>
     <div>
-      <h1>FK Profit Tracker <span style="font-size:.6rem;background:var(--seam);padding:2px 6px;border-radius:6px;vertical-align:middle">v37</span></h1>
+      <h1>FK Profit Tracker <span style="font-size:.6rem;background:var(--seam);padding:2px 6px;border-radius:6px;vertical-align:middle">v38</span></h1>
       <div class="sub">M/s Nav Durga Sports · DASH X</div>
     </div>
     <button class="sync-btn" id="lockBtn" style="display:none;margin-left:auto;margin-right:6px" onclick="toggleLock()">🔒 Locked</button>
@@ -369,8 +369,8 @@
   <section class="page" id="pg-set">
     <div class="card" style="background:var(--ink);border-color:var(--ink)">
       <h2 style="color:#fff">📌 App Version</h2>
-      <p style="color:#7ee2ae;font-size:1.6rem;font-weight:900;margin:6px 0">v37 · Hisab check: PDF me return minus</p>
-      <p class="hint" style="color:#9aa3ad">Agar yahan <b style="color:#7ee2ae">v37</b> dikh raha hai to ye NAYI app hai ✅<br>Ab app KHUD dekhti hai — nayi aane pe hara button dikha degi, ek tap me aa jayegi.<br>Purani me ye box hoga hi nahi.</p>
+      <p style="color:#7ee2ae;font-size:1.6rem;font-weight:900;margin:6px 0">v38 · Return = profit me se kam · label qty fix</p>
+      <p class="hint" style="color:#9aa3ad">Agar yahan <b style="color:#7ee2ae">v38</b> dikh raha hai to ye NAYI app hai ✅<br>Ab app KHUD dekhti hai — nayi aane pe hara button dikha degi, ek tap me aa jayegi.<br>Purani me ye box hoga hi nahi.</p>
       <button class="btn" style="background:rgba(255,255,255,.15);color:#fff;margin-top:10px" onclick="forceUpdate()">🔄 Nayi app laao (cache saaf karo)</button>
     </div>
     <div class="card">
@@ -540,6 +540,8 @@ function sanitize(list){
     cost: (isNaN(parseFloat(e.cost)) ? 0 : parseFloat(e.cost)),
     ts: (parseInt(e.ts) || Date.now()),
     returned: !!e.returned,
+    retMarked: !!e.retMarked,
+    link: (e.link ? String(e.link) : ''),
     kind: (e.kind === 'ret' ? 'ret' : '')
   }));
 }
@@ -983,7 +985,7 @@ function parseLabelPages(pages, fileName){
       const ex = byId[it.id];
       if(ex){                                            // label + invoice ek hi order: mila do
         if(!ex.product && nq.name){ ex.product = lblAlias[rawKey] || nq.name; ex.rawKey = rawKey; ex.qty = nq.qty; }
-        if(ex.pp === '' && total > 0) ex.pp = Math.round(total / ex.qty * 100) / 100;
+        if(ex.pp === '' && total > 0){ ex.total = total; ex.pp = Math.round(total / ex.qty * 100) / 100; }
         return;
       }
       const name = lblAlias[rawKey] || nq.name;
@@ -991,6 +993,7 @@ function parseLabelPages(pages, fileName){
       const row = {
         id: it.id, platform: plat, rawKey, product: name, qty: nq.qty,
         pp: total > 0 ? Math.round(total / nq.qty * 100) / 100 : (prices[k] != null ? prices[k] : ''),
+        total: total > 0 ? total : 0,                     // label pe likha poora order ka paisa (qty badlo to bhi yahi)
         cp: (costs[k] != null ? costs[k] : ''),
         inc: true, file: fileName || ''
       };
@@ -1002,7 +1005,7 @@ function parseLabelPages(pages, fileName){
 }
 
 /* ---------- screen ---------- */
-function lblSale(r){ return (r.pp === '' ? 0 : r.pp) * r.qty; }
+function lblSale(r){ return r.total > 0 ? r.total : (r.pp === '' ? 0 : r.pp) * r.qty; }
 function lblCost(r){ return (r.cp === '' ? 0 : r.cp) * r.qty; }
 function lblSummaryHtml(){
   const inc = lblRows.filter(r => r.inc);
@@ -1085,16 +1088,18 @@ function lblSet(i, f, v){
   } else if(f === 'qty'){
     r.qty = Math.max(1, parseInt(v) || 1);
     lblSetInput('lq-' + i, r.qty);
+    if(r.total > 0){ r.pp = Math.round(r.total / r.qty * 100) / 100; lblSetInput('lpp-' + i, r.pp); }   // label ka kul paisa wahi, rate = kul / qty
   } else if(f === 'pp' || f === 'cp'){
     const old = r[f];
     const nv = (v === '' || isNaN(parseFloat(v))) ? '' : parseFloat(v);
     r[f] = nv;
+    if(f === 'pp') r.total = 0;                          // rate khud likha to wahi chalega
     const k = prodKey(r.product);
     if(nv !== '' && k){
       if(f === 'pp'){ prices[k] = nv; persist('prices', prices); pushMeta(); }
       else { costs[k] = nv; costNames[k] = r.product; persist('costs', costs); persist('costnames', costNames); pushMeta(); }
       lblRows.forEach((o, j)=>{                           // isi product ke baaki orders me bhi bhar do
-        if(j !== i && prodKey(o.product) === k && (o[f] === '' || o[f] === old)){
+        if(j !== i && prodKey(o.product) === k && (o[f] === '' || o[f] === old) && !(f === 'pp' && o.total > 0)){   // label se aaya paisa mat chhedo
           o[f] = nv; lblSetInput((f === 'pp' ? 'lpp-' : 'lcp-') + j, nv); lblRefreshRow(j);
         }
       });
@@ -1143,7 +1148,7 @@ async function lblAddAll(){
     if(findDup(r.id)){ dups++; return; }
     const e = { id: Date.now() + '' + Math.floor(Math.random() * 9999) + i, orderId: r.id, date,
       product: r.product, qty: r.qty,
-      sale: Math.round(r.pp * r.qty * 100) / 100, cost: Math.round(r.cp * r.qty * 100) / 100, ts: Date.now() + i };
+      sale: Math.round(lblSale(r) * 100) / 100, cost: Math.round(r.cp * r.qty * 100) / 100, ts: Date.now() + i };
     entries.push(e); fresh.push(e);
   });
   if(!fresh.length){ toast('Sab pehle se chadhe hue hain (' + dups + ' double)'); return; }
@@ -1166,7 +1171,7 @@ async function lblAddAll(){
 }
 
 /* ================= auto update check ================= */
-const APP_VERSION = 37;   // har nayi file me ye badhta hai
+const APP_VERSION = 38;   // har nayi file me ye badhta hai
 async function checkForUpdate(){
   try{
     // apni hi file dobara laao (cache se nahi, taaza)
@@ -2079,8 +2084,7 @@ function handleReturn(d){
     }
     return;
   }
-  if(e.returned){ toast('Ye order pehle se RETURN laga hai'); return; }
-  if(!confirm('↩️ RETURN lagana hai?\n\n' + e.product + '\n' + e.date + ' | Rs ' + e.sale + '\nOrder: ' + e.orderId + '\n\nHisab me se ye order hat jayega (maal wapas aa gaya).')) return;
+  if(e.returned || e.retMarked){ toast('Ye order pehle se RETURN laga hai'); return; }
   markReturn(e.id, true);
 }
 var rcMode = false;   // return cost (shipping/penalty) — sirf minus, koi order nahi hatta
@@ -2094,16 +2098,44 @@ function manualReturn(){
   openReturnEntry({});
   toast('↩️ Jo pata hai wo bharo — Order ID, product, qty, return ka paisa. Kuch khali bhi chalega');
 }
+// ↩️ RETURN: order apni jagah rehta hai (purana hisab nahi badalta).
+// Wapsi ke DIN us order ka profit (sale - lagat) hisab me se KAM hota hai — maal wapas aa gaya, kamai gayi.
+function orderProfit(e){ return Math.max(0, Math.round(((+e.sale||0) - (+e.cost||0)) * 100) / 100); }
+function makeRetFor(e, extra){
+  const r = { id: Date.now()+''+Math.floor(Math.random()*999), orderId: e.orderId || '', date: todayStr(),
+    product: 'Return: ' + e.product, qty: e.qty || 1, sale: Math.round((orderProfit(e) + (extra||0)) * 100) / 100,
+    cost: 0, ts: Date.now(), kind: 'ret', link: e.id };
+  e.retMarked = true;
+  entries.push(r);
+  pushEntry(e); pushEntry(r);
+  return r;
+}
+function dropEntryQuiet(id){
+  entries = entries.filter(x => x.id !== id);
+  setPending(getPending().filter(x => x !== String(id)));
+  const pd = getPendDel(); if(pd.indexOf(String(id)) < 0){ pd.push(String(id)); setPendDel(pd); }
+  sendDeletes();
+}
 function markReturn(id, val){
   if(!askPin(val ? 'RETURN lagana hai' : 'RETURN hatana hai')) return;
   const e = entries.find(x => x.id === id);
   if(!e) return;
-  if(val && !confirm('Pakka RETURN?\n' + e.product + ' | Rs ' + e.sale)) return;
-  e.returned = !!val;
+  if(val){
+    if(e.retMarked || e.returned){ toast('Ye order pehle se RETURN laga hai'); return; }
+    if(!confirm('↩️ RETURN?\n\n' + e.product + '\nSale ' + fmt(e.sale) + ' · Lagat ' + fmt(e.cost) + '\n\nIs order ka profit ' + fmt(orderProfit(e)) + ' AAJ ke hisab se kam hoga.\n(Shipping/charge alag se 💸 Return cost me daalo)')) return;
+    makeRetFor(e, 0);
+    toast('↩️ RETURN laga — ' + fmt(orderProfit(e)) + ' profit me se kam');
+  } else {
+    if(e.returned){ e.returned = false; pushEntry(e); }                 // purane tarike wala
+    else {
+      e.retMarked = false; pushEntry(e);
+      entries.filter(x => x.kind === 'ret' && x.link === e.id).forEach(x => dropEntryQuiet(x.id));
+    }
+    toast('✅ RETURN hata — profit wapas');
+  }
+  entries.sort((a,b2)=> b2.date.localeCompare(a.date) || b2.ts - a.ts);
   persist('entries', entries);
-  pushEntry(e);
   renderEntries(); renderHisab();
-  toast(val ? '↩️ RETURN lag gaya — hisab se hat gaya' : '✅ RETURN hata — entry wapas hisab me');
 }
 
 /* ================= review / save ================= */
@@ -2269,18 +2301,18 @@ function saveReturnEntry(){
   let loss = Math.abs(parseFloat($('fSale').value)); if(isNaN(loss)) loss = 0;   // - lagane ki zarurat nahi
   const date = $('fDate').value || todayStr();
   const no = normOid(oid);
-  const hit = (no && !rcMode) ? entries.filter(x => x.kind !== 'ret' && !x.returned && (normOid(x.orderId) === no || (no.length >= 6 && normOid(x.orderId).endsWith(no)))) : [];
+  const hit = (no && !rcMode) ? entries.filter(x => x.kind !== 'ret' && !x.returned && !x.retMarked && (normOid(x.orderId) === no || (no.length >= 6 && normOid(x.orderId).endsWith(no)))) : [];
   let product = $('fProduct').value.trim();
   let msg = '';
-  if(hit.length === 1){
+  if(hit.length === 1){                                 // order mila: uska profit + likha hua nuksan, ek hi minus entry
     const e = hit[0];
-    e.returned = true; pushEntry(e);
+    const r = makeRetFor(e, loss); r.date = date; pushEntry(r);
     if(!product) product = e.product;
-    msg = '↩️ Order ' + (e.orderId || '') + ' RETURN laga (hisab se hata)';
+    msg = '↩️ ' + e.product.slice(0,24) + ' RETURN — ' + fmt(r.sale) + ' profit me se kam';
   }
   if(!product) product = rcMode ? 'Return cost' : 'Return';
   if(rcMode && !/return cost/i.test(product)) product = 'Return cost: ' + product;
-  if(loss > 0 || !hit.length){
+  if(!hit.length){
     const r = { id: Date.now()+''+Math.floor(Math.random()*999), orderId: oid, date, product, qty, sale: loss, cost: 0, ts: Date.now(), kind: 'ret' };
     entries.push(r); pushEntry(r);
     msg = (msg ? msg + ' · ' : '↩️ Return chadha · ') + 'nuksan ' + fmt(loss);
@@ -2501,7 +2533,7 @@ function renderEntries(){
   const counts = {};
   for(const e of entries){
     const no = normOid(e.orderId);
-    if(no) counts['o:'+no] = (counts['o:'+no]||0)+1;
+    if(no && e.kind !== 'ret') counts['o:'+no] = (counts['o:'+no]||0)+1;   // return entry ko double mat gino
   }
   const list = q ? entries.filter(e =>
       (e.product||'').toLowerCase().includes(q) || (e.orderId||'').toLowerCase().includes(q)
@@ -2517,19 +2549,20 @@ function renderEntries(){
     }
     const p = e.sale - e.cost;
     const no = normOid(e.orderId);
-    const isDup = no && counts['o:'+no] > 1;
+    const isDup = no && e.kind !== 'ret' && counts['o:'+no] > 1;
     const isRet = !!e.returned;
+    const isRM = !!e.retMarked;
     const isRE = (e.kind === 'ret');
     html += `<div class="entry${isDup?' dup':''}"${isRet?' style="opacity:.65;border-color:#b8860b;background:#fdf8ec"':''}>
       <div class="info">
-        <div class="name"${isRet?' style="text-decoration:line-through"':''}>${esc(e.product)}${isDup?'<span class="chip-dup">DOUBLE</span>':''}${isRet?'<span class="chip-dup" style="background:#b8860b">RETURN</span>':''}${isRE?'<span class="chip-dup" style="background:#8a6d0b">RETURN ENTRY</span>':''}</div>
+        <div class="name"${isRet?' style="text-decoration:line-through"':''}>${esc(e.product)}${isDup?'<span class="chip-dup">DOUBLE</span>':''}${(isRet||isRM)?'<span class="chip-dup" style="background:#b8860b">RETURN</span>':''}${isRE?'<span class="chip-dup" style="background:#8a6d0b">RETURN ENTRY</span>':''}</div>
         <div class="meta">${e.orderId ? esc(e.orderId) + ' · ' : ''}Qty ${e.qty} · Lagat ${fmt(e.cost)}</div>
       </div>
       <div class="nums">
         <div class="sale"${isRE?' style="color:#b8860b"':''}>${isRE?'- ':''}${fmt(e.sale)}</div>
         ${isRE?'<div class="pft neg">wapas gaya</div>':`<div class="pft ${p>=0?'pos':'neg'}">${p>=0?'+':''}${fmt(p)}</div>`}
       </div>
-      ${isRE?'':`<button class="edt" title="return" onclick="markReturn('${e.id}', ${isRet?'false':'true'})">↩️</button>`}
+      ${isRE?'':`<button class="edt" title="return" onclick="markReturn('${e.id}', ${(isRet||isRM)?'false':'true'})">↩️</button>`}
       <button class="edt" onclick="openEdit('${e.id}')">✎</button>
       <button class="del" onclick="delEntry('${e.id}')">✕</button>
     </div>`;
@@ -2540,6 +2573,8 @@ function esc(s){ return (s||'').replace(/[<>&"]/g, c=>({'<':'&lt;','>':'&gt;','&
 function delEntry(id){
   if(!askPin('Entry delete karni hai')) return;
   if(!confirm('Ye entry hatani hai?')) return;
+  const gone = entries.find(e=>e.id===id);
+  if(gone && gone.link){ const o = entries.find(x => x.id === gone.link); if(o){ o.retMarked = false; pushEntry(o); } }
   entries = entries.filter(e=>e.id!==id);
   persist('entries', entries);
   setPending(getPending().filter(x => x !== String(id)));
