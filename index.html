@@ -237,7 +237,7 @@
   <div class="brand">
     <div class="ball"></div>
     <div>
-      <h1>FK Profit Tracker <span style="font-size:.6rem;background:var(--seam);padding:2px 6px;border-radius:6px;vertical-align:middle">v35</span></h1>
+      <h1>FK Profit Tracker <span style="font-size:.6rem;background:var(--seam);padding:2px 6px;border-radius:6px;vertical-align:middle">v36</span></h1>
       <div class="sub">M/s Nav Durga Sports · DASH X</div>
     </div>
     <button class="sync-btn" id="lockBtn" style="display:none;margin-left:auto;margin-right:6px" onclick="toggleLock()">🔒 Locked</button>
@@ -369,8 +369,8 @@
   <section class="page" id="pg-set">
     <div class="card" style="background:var(--ink);border-color:var(--ink)">
       <h2 style="color:#fff">📌 App Version</h2>
-      <p style="color:#7ee2ae;font-size:1.6rem;font-weight:900;margin:6px 0">v35 · Sab device ek hisab (auto)</p>
-      <p class="hint" style="color:#9aa3ad">Agar yahan <b style="color:#7ee2ae">v35</b> dikh raha hai to ye NAYI app hai ✅<br>Ab app KHUD dekhti hai — nayi aane pe hara button dikha degi, ek tap me aa jayegi.<br>Purani me ye box hoga hi nahi.</p>
+      <p style="color:#7ee2ae;font-size:1.6rem;font-weight:900;margin:6px 0">v36 · Data safety + roz auto backup</p>
+      <p class="hint" style="color:#9aa3ad">Agar yahan <b style="color:#7ee2ae">v36</b> dikh raha hai to ye NAYI app hai ✅<br>Ab app KHUD dekhti hai — nayi aane pe hara button dikha degi, ek tap me aa jayegi.<br>Purani me ye box hoga hi nahi.</p>
       <button class="btn" style="background:rgba(255,255,255,.15);color:#fff;margin-top:10px" onclick="forceUpdate()">🔄 Nayi app laao (cache saaf karo)</button>
     </div>
     <div class="card">
@@ -474,7 +474,8 @@
       <button class="btn" style="background:var(--ink);color:#fff;margin-top:0" onclick="exportData()">⬇️ Backup download (JSON)</button>
       <label style="margin-top:14px">Backup wapas daalo (restore)</label>
       <input type="file" accept=".json" onchange="importData(this.files[0])">
-      <p class="hint" style="margin-top:8px">Data phone ke browser me save rehta hai. Mahine me ek baar backup zaroor lo.</p>
+      <button class="btn" style="background:#1d6b45;color:#fff" onclick="restoreCloud()">☁️ Roz ka auto backup se wapas lao</button>
+      <p class="hint" style="margin-top:8px">🛡️ Har din server pe khud backup banta hai. Entry sirf Delete button ya Reset se hatti hai — kisi aur wajah se gayab nahi hogi.</p>
       <button class="btn" style="background:var(--seam);color:#fff" onclick="resetAll()">🗑️ Saara hisab reset karo (PIN chahiye)</button>
     </div>
   </section>
@@ -1164,7 +1165,7 @@ async function lblAddAll(){
 }
 
 /* ================= auto update check ================= */
-const APP_VERSION = 35;   // har nayi file me ye badhta hai
+const APP_VERSION = 36;   // har nayi file me ye badhta hai
 async function checkForUpdate(){
   try{
     // apni hi file dobara laao (cache se nahi, taaza)
@@ -1231,6 +1232,23 @@ async function pushEntry(e){
   if(ok) setPending(getPending().filter(x => x !== id));
   return ok;
 }
+// delete bhi queue me — net na ho to baad me khud jaata hai, aur doosre phone pe entry wapas nahi aati
+function getPendDel(){ try{ return JSON.parse(localStorage.getItem('fpt:penddel') || '[]'); }catch(e){ return []; } }
+function setPendDel(p){ try{ localStorage.setItem('fpt:penddel', JSON.stringify(p)); }catch(e){} }
+async function sendDeletes(){
+  const b = fbBase(); if(!b) return;
+  const left = [];
+  for(const id of getPendDel()){
+    try{
+      const r1 = await fetch(b + '/deleted/' + encodeURIComponent(id) + '.json', {method:'PUT', body: JSON.stringify(Date.now())});
+      const r2 = await fetch(b + '/entries/' + encodeURIComponent(id) + '.json', {method:'DELETE'});
+      if(!r1.ok || !r2.ok) left.push(id);
+    }catch(e){ left.push(id); }
+  }
+  setPendDel(left);
+}
+let metaDirty = false;
+let pulling = false;
 async function flushPending(b){
   const p = getPending(); if(!p.length) return;
   const left = [];
@@ -1242,42 +1260,115 @@ async function flushPending(b){
   }
   setPending(left);
 }
-function pushMeta(){ return fbPut('/meta', {costs, costNames, kharcha, settings, prices, lblAlias, retCosts}); }
+let resetAt = 0; try{ resetAt = parseInt(localStorage.getItem('fpt:resetat')) || 0; }catch(e){}
+async function pushMeta(){
+  metaDirty = true;
+  const ok = await fbPut('/meta', {costs, costNames, kharcha, settings, prices, lblAlias, retCosts, resetAt});
+  if(ok) metaDirty = false;
+  return ok;
+}
 async function pullAll(silent){
+  if(pulling) return;
+  pulling = true;
+  try{ await pullCore(silent); } finally { pulling = false; }
+}
+async function pullCore(silent){
   const b = fbBase(); if(!b) return;
   setDot('busy','Sync...');
   try{
+    await sendDeletes();
     await flushPending(b);                           // pehle bachi hui entries upar bhejo
+    if(metaDirty) await pushMeta();
     const r = await fetch(b + '.json');
     if(!r.ok) throw 0;
-    const d = await r.json();
-    {
-      // SERVER hi sach hai: entries wahan jitni hain, yahan bhi utni hi rahengi.
-      // Sab delete ho gayin to yahan bhi khali — delete ab DONO phone me failta hai.
-      const keep = getPending().map(id => entries.find(x => String(x.id) === id)).filter(Boolean);   // abhi tak nahi pahunchi — mitao mat
-      entries = sanitize(Object.values((d && d.entries) || {}));
-      keep.forEach(e => { if(!entries.some(x => x.id === e.id)) entries.push(e); });
-      entries.sort((a,b2)=> b2.date.localeCompare(a.date) || b2.ts - a.ts);
-      persist('entries', entries);
-      if(d.meta){
-        if(d.meta.costs) { costs = d.meta.costs; persist('costs', costs); }
-        if(d.meta.costNames) { costNames = d.meta.costNames; persist('costnames', costNames); }
-        if(d.meta.kharcha) { kharcha = d.meta.kharcha; persist('kharcha', kharcha); }
-        if(d.meta.prices) { prices = d.meta.prices; persist('prices', prices); }
-        if(d.meta.lblAlias) { lblAlias = d.meta.lblAlias; persist('lblalias', lblAlias); }
-        if(d.meta.retCosts) { retCosts = d.meta.retCosts; persist('retcosts', retCosts); }
-        if(d.meta.settings) { settings = d.meta.settings; persist('settings', settings);
-          $('sP1').value = settings.p1; $('sP2').value = settings.p2; $('sRatio').value = settings.ratio; }
-      }
-      renderEntries(); renderHisab(); renderCosts();
+    const d = (await r.json()) || {};
+    // NIYAM: entry sirf 2 tarah se hatti hai — Delete button ya Reset (dono PIN se).
+    // Server se kisi aur wajah se gayab hui (net glitch, galat code, server khali) to phone wali entry wapas chadha di jaati hai.
+    const srvRaw = (d.entries && typeof d.entries === 'object') ? d.entries : {};
+    const dead = Object.assign({}, d.deleted || {});
+    getPendDel().forEach(id => { dead[id] = 1; });
+    const sRes = (d.meta && parseInt(d.meta.resetAt)) || 0;
+    if(sRes > resetAt){ resetAt = sRes; localStorage.setItem('fpt:resetat', String(resetAt)); }
+    const pend = getPending();
+    const map = {};
+    sanitize(Object.values(srvRaw)).forEach(e => { if(!dead[e.id]) map[e.id] = e; });
+    let restored = 0;
+    const firstRun = !localStorage.getItem('fpt:safe36');             // pehli baar: purane version ke delete ko maano, server hi sach
+    entries.forEach(e => {
+      if(firstRun && pend.indexOf(String(e.id)) < 0) return;
+      if(dead[e.id]) return;                                          // jaan-boojh kar delete
+      if(pend.indexOf(String(e.id)) >= 0){ map[e.id] = e; return; }   // upload baaki — phone wali sahi
+      if(map[e.id]) return;
+      if(resetAt && (e.ts || 0) <= resetAt) return;                   // reset se pehle ki
+      map[e.id] = e; restored++;                                      // server se gayab — wapas chadhao
+      const p = getPending(); if(p.indexOf(String(e.id)) < 0){ p.push(String(e.id)); setPending(p); }
+    });
+    entries = Object.values(map);
+    entries.sort((a,b2)=> b2.date.localeCompare(a.date) || b2.ts - a.ts);
+    persist('entries', entries);
+    if(firstRun) localStorage.setItem('fpt:safe36', '1');
+    if(restored){ await flushPending(b); toast('🛡️ ' + restored + ' entry server pe nahi thi — wapas chadha di'); }
+    if(d.meta && !metaDirty){
+      if(d.meta.costs) { costs = d.meta.costs; persist('costs', costs); }
+      if(d.meta.costNames) { costNames = d.meta.costNames; persist('costnames', costNames); }
+      if(d.meta.kharcha) { kharcha = d.meta.kharcha; persist('kharcha', kharcha); }
+      if(d.meta.prices) { prices = d.meta.prices; persist('prices', prices); }
+      if(d.meta.lblAlias) { lblAlias = d.meta.lblAlias; persist('lblalias', lblAlias); }
+      if(d.meta.retCosts) { retCosts = d.meta.retCosts; persist('retcosts', retCosts); }
+      if(d.meta.settings) { settings = d.meta.settings; persist('settings', settings);
+        $('sP1').value = settings.p1; $('sP2').value = settings.p2; $('sRatio').value = settings.ratio; }
     }
+    renderEntries(); renderHisab(); renderCosts();
+    dailyBackup(b);
     await pullPin();
     setDot('on','Synced');
-    if(!silent) toast('🔄 Sync ho gaya — dono phone ka data ek jaisa hai');
+    if(!silent) toast('🔄 Sync ho gaya — sab device ka data ek jaisa hai');
   }catch(e){
     setDot('err','Sync fail');
-    if(!silent) toast('⚠️ Sync nahi hua — URL/shop code ya internet check karo');
+    if(!silent) toast('⚠️ Sync nahi hua — internet check karo, data phone me safe hai');
   }
+}
+// ---- roz ka auto backup: server pe /backups/<date> + phone me ek copy. Kuch karna nahi padta ----
+async function dailyBackup(b){
+  const day = todayStr();
+  try{
+    const last = parseInt(localStorage.getItem('fpt:bkts')) || 0;
+    if(localStorage.getItem('fpt:bkday') === day && Date.now() - last < 3*3600*1000) return;   // din me har 3 ghante taaza
+    if(!entries.length) return;
+    const snap = {ts: Date.now(), n: entries.length, entries: {}, meta: {costs, costNames, kharcha, prices, retCosts}};
+    entries.forEach(e => { snap.entries[e.id] = e; });
+    const r = await fetch(b + '/backups/' + day + '.json', {method:'PUT', body: JSON.stringify(snap)});
+    if(!r.ok) return;
+    localStorage.setItem('fpt:bkday', day); localStorage.setItem('fpt:bkts', String(Date.now()));
+    try{ localStorage.setItem('fpt:snap', JSON.stringify({day, entries})); }catch(e){}
+  }catch(e){}
+}
+async function restoreCloud(){
+  if(!askPin('Purana backup wapas lana hai')) return;
+  const b = fbBase(); if(!b) return;
+  let days = [];
+  try{ days = Object.keys((await (await fetch(b + '/backups.json?shallow=true')).json()) || {}).sort().reverse().slice(0, 15); }catch(e){}
+  if(!days.length){ toast('Abhi koi cloud backup nahi hai'); return; }
+  const pick = prompt('Kis din ka backup? Number likho:\n\n' + days.map((d,i)=> (i+1) + ') ' + d).join('\n'));
+  const day = days[(parseInt(pick) || 0) - 1];
+  if(!day) return;
+  try{
+    const snap = await (await fetch(b + '/backups/' + day + '.json')).json();
+    const list = sanitize(Object.values((snap && snap.entries) || {}));
+    const have = {}; entries.forEach(e => { have[e.id] = 1; });
+    const add = list.filter(e => !have[e.id]);
+    if(!add.length){ toast('✅ ' + day + ' ki saari entry pehle se hisab me hain'); return; }
+    if(!confirm(day + ' ke backup se ' + add.length + ' entry wapas aayengi (jo abhi hisab me nahi hain).\nAbhi ki koi entry nahi hategi. Pakka?')) return;
+    const pd = getPendDel().filter(id => !add.some(e => String(e.id) === id)); setPendDel(pd);
+    for(const e of add){
+      entries.push(e);
+      try{ await fetch(b + '/deleted/' + encodeURIComponent(e.id) + '.json', {method:'DELETE'}); }catch(x){}
+      await pushEntry(e);
+    }
+    entries.sort((a,b2)=> b2.date.localeCompare(a.date) || b2.ts - a.ts);
+    persist('entries', entries); renderEntries(); renderHisab();
+    toast('✅ ' + add.length + ' entry wapas aa gayi');
+  }catch(e){ toast('❌ Backup nahi khula — internet check karo'); }
 }
 async function pushEverything(){
   // pehli baar setup pe: is phone ka saara purana data server pe chadha do
@@ -1896,10 +1987,13 @@ async function resetAll(){
   if(!askPin('SAARA HISAB RESET karna hai')) return;
   if(!confirm('⚠️ PAKKA?\n\nSaari entries, lagat list, kharcha — sab mit jayega.\nDono phone se mit jayega!\n\nPehle backup le liya?')) return;
   if(!confirm('Aakhri baar — sach me sab mitana hai?')) return;
+  exportData();                                       // reset se pehle khud backup file download
   entries = []; costs = {}; costNames = {}; kharcha = {};
+  resetAt = Date.now(); localStorage.setItem('fpt:resetat', String(resetAt));
+  setPending([]); setPendDel([]);
   persist('entries', entries); persist('costs', costs); persist('costnames', costNames); persist('kharcha', kharcha);
   const b = fbBase();
-  if(b){ try{ await fetch(b + '/entries.json', {method:'DELETE'}); await pushMeta(); }catch(e){} }
+  if(b){ try{ await fetch(b + '/entries.json', {method:'DELETE'}); await fetch(b + '/deleted.json', {method:'DELETE'}); await pushMeta(); }catch(e){} }
   renderEntries(); renderHisab(); renderCosts();
   toast('🗑️ Saara hisab reset ho gaya');
 }
@@ -2442,8 +2536,10 @@ function delEntry(id){
   if(!confirm('Ye entry hatani hai?')) return;
   entries = entries.filter(e=>e.id!==id);
   persist('entries', entries);
-  fbDel('/entries/' + id);
-  renderEntries(); toast('Entry hat gayi');
+  setPending(getPending().filter(x => x !== String(id)));
+  const pd = getPendDel(); if(pd.indexOf(String(id)) < 0){ pd.push(String(id)); setPendDel(pd); }
+  sendDeletes();
+  renderEntries(); renderHisab(); toast('Entry hat gayi');
 }
 
 /* ================= hisab ================= */
@@ -2599,7 +2695,9 @@ function importData(file){
       const d = JSON.parse(fr.result);
       if(!d || !Array.isArray(d.entries)) throw 0;
       if(!confirm('Backup se ' + d.entries.length + ' entries wapas aayengi. Abhi ka data replace ho jayega. Pakka?')) return;
-      entries = d.entries; costs = d.costs||{}; costNames = d.costNames||{}; kharcha = d.kharcha||{}; settings = d.settings||settings;
+      entries = sanitize(d.entries); costs = d.costs||{}; costNames = d.costNames||{}; kharcha = d.kharcha||{}; settings = d.settings||settings;
+      setPending(entries.map(e => String(e.id))); setPendDel([]);
+      const bb = fbBase(); if(bb) entries.forEach(e => { fetch(bb + '/deleted/' + encodeURIComponent(e.id) + '.json', {method:'DELETE'}).catch(()=>{}); });
       persist('entries', entries); persist('costs', costs); persist('costnames', costNames); persist('kharcha', kharcha); persist('settings', settings);
       pushEverything();
       loadAll();
