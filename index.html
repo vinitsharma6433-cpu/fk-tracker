@@ -237,7 +237,7 @@
   <div class="brand">
     <div class="ball"></div>
     <div>
-      <h1>FK Profit Tracker <span style="font-size:.6rem;background:var(--seam);padding:2px 6px;border-radius:6px;vertical-align:middle">v36</span></h1>
+      <h1>FK Profit Tracker <span style="font-size:.6rem;background:var(--seam);padding:2px 6px;border-radius:6px;vertical-align:middle">v37</span></h1>
       <div class="sub">M/s Nav Durga Sports · DASH X</div>
     </div>
     <button class="sync-btn" id="lockBtn" style="display:none;margin-left:auto;margin-right:6px" onclick="toggleLock()">🔒 Locked</button>
@@ -369,8 +369,8 @@
   <section class="page" id="pg-set">
     <div class="card" style="background:var(--ink);border-color:var(--ink)">
       <h2 style="color:#fff">📌 App Version</h2>
-      <p style="color:#7ee2ae;font-size:1.6rem;font-weight:900;margin:6px 0">v36 · Data safety + roz auto backup</p>
-      <p class="hint" style="color:#9aa3ad">Agar yahan <b style="color:#7ee2ae">v36</b> dikh raha hai to ye NAYI app hai ✅<br>Ab app KHUD dekhti hai — nayi aane pe hara button dikha degi, ek tap me aa jayegi.<br>Purani me ye box hoga hi nahi.</p>
+      <p style="color:#7ee2ae;font-size:1.6rem;font-weight:900;margin:6px 0">v37 · Hisab check: PDF me return minus</p>
+      <p class="hint" style="color:#9aa3ad">Agar yahan <b style="color:#7ee2ae">v37</b> dikh raha hai to ye NAYI app hai ✅<br>Ab app KHUD dekhti hai — nayi aane pe hara button dikha degi, ek tap me aa jayegi.<br>Purani me ye box hoga hi nahi.</p>
       <button class="btn" style="background:rgba(255,255,255,.15);color:#fff;margin-top:10px" onclick="forceUpdate()">🔄 Nayi app laao (cache saaf karo)</button>
     </div>
     <div class="card">
@@ -1042,7 +1042,7 @@ function lblRefreshRow(i){
 }
 function renderLabel(){
   const box = $('lblBody'); if(!box) return;
-  if(!$('lblDate').value) $('lblDate').value = todayStr();
+  const ld = $('lblDate'); if(!ld.value || ld.dataset.day !== todayStr()){ ld.value = todayStr(); ld.dataset.day = todayStr(); }   // app raat bhar khuli rahe to bhi aaj ki date
   if(!lblRows.length){ box.innerHTML = ''; return; }
   let html = '<div class="card" style="margin-top:14px"><div id="lblSummary">' + lblSummaryHtml() + '</div>' +
     '<button class="btn btn-save" onclick="lblAddAll()">✅ Sab entries me jodo</button>' +
@@ -1136,7 +1136,8 @@ async function lblAddAll(){
   if(!todo.length){ toast('Koi order chuna nahi'); return; }
   const bad = todo.filter(r => r.pp === '' || r.cp === '' || !r.product).length;
   if(bad){ toast('⚠️ ' + bad + ' order me price / lagat / naam khali — pehle bhar do'); return; }
-  const date = $('lblDate').value || todayStr();
+  const ld = $('lblDate'); if(ld.dataset.day !== todayStr()){ ld.value = todayStr(); ld.dataset.day = todayStr(); }
+  const date = ld.value || todayStr();
   const fresh = []; let dups = 0;
   todo.forEach((r, i)=>{
     if(findDup(r.id)){ dups++; return; }
@@ -1165,7 +1166,7 @@ async function lblAddAll(){
 }
 
 /* ================= auto update check ================= */
-const APP_VERSION = 36;   // har nayi file me ye badhta hai
+const APP_VERSION = 37;   // har nayi file me ye badhta hai
 async function checkForUpdate(){
   try{
     // apni hi file dobara laao (cache se nahi, taaza)
@@ -1292,6 +1293,7 @@ async function pullCore(silent){
     const pend = getPending();
     const map = {};
     sanitize(Object.values(srvRaw)).forEach(e => { if(!dead[e.id]) map[e.id] = e; });
+    Object.values(srvRaw).forEach(x => { if(x && x.kind === 'ret' && parseFloat(x.sale) < 0 && map[x.id]) fbPut('/entries/' + x.id, map[x.id]); });
     let restored = 0;
     const firstRun = !localStorage.getItem('fpt:safe36');             // pehli baar: purane version ke delete ko maano, server hi sach
     entries.forEach(e => {
@@ -2022,6 +2024,7 @@ function findDup(oid, date, product, qty, sale, excludeId){
   if(!no) return null;                                   // sirf Order ID se pakadna hai
   for(const e of entries){
     if(excludeId && e.id === excludeId) continue;
+    if(e.kind === 'ret') continue;                       // return/return cost entry asli order ko nahi rokti
     if(normOid(e.orderId) === no) return e;
   }
   return null;
@@ -2345,7 +2348,7 @@ function buildReport(title, sub, rows, extraKharcha){
     const kh = extraKharcha.reduce((a,k)=>a+k.amt,0);
     doc.text('Katauti (Tax/Return/Kharcha): ' + rs(kh), M, y); y += 5;
     doc.setFont('helvetica','normal'); doc.setFontSize(8.5);
-    for(const k of extraKharcha){ doc.text('   - ' + k.name.slice(0,40) + ': ' + rs(k.amt), M, y); y += 4.5; }
+    for(const k of extraKharcha){ if(y > 280){ doc.addPage(); y = 18; } doc.text('   - ' + String(k.name).replace(/[^\x20-\x7E]/g,'').slice(0,40) + ': ' + rs(k.amt), M, y); y += 4.5; }
     doc.setFont('helvetica','bold'); doc.setFontSize(10); y += 2;
     net -= kh;
   }
@@ -2377,11 +2380,14 @@ async function sharePDF(doc, filename){
     toast('📄 PDF download ho gayi — WhatsApp me attach kar do');
   }catch(e){ toast('❌ PDF save nahi hui'); }
 }
+// return / return cost bhi PDF ki katauti me — app ke Net Profit se bilkul barabar
+function retKatauti(list){ return list.filter(e=>e.kind==='ret' && !e.returned).map(e=>({name: 'Return: ' + String(e.product||'').replace(/^Return cost:\s*/i,'cost ') + (e.date ? ' (' + e.date.slice(5) + ')' : ''), amt: Math.abs(e.sale)})); }
 function dayPDF(dateStr){
   const rows = entries.filter(e=>e.date===dateStr && !e.returned && e.kind!=='ret').slice().sort((a,b)=>a.ts-b.ts);
+  const dayRet = retKatauti(entries.filter(e=>e.date===dateStr));
   if(!rows.length){ toast('Is din ki koi entry nahi'); return; }
   const d = new Date(dateStr+'T00:00');
-  const doc = buildReport('Daily Report: ' + d.getDate() + ' ' + MONTHS[d.getMonth()] + ' ' + d.getFullYear(), rows.length + ' orders', rows, null);
+  const doc = buildReport('Daily Report: ' + d.getDate() + ' ' + MONTHS[d.getMonth()] + ' ' + d.getFullYear(), rows.length + ' orders', rows, dayRet);
   sharePDF(doc, 'FK-Report-' + dateStr + '.pdf');
 }
 function returnPDF(){
@@ -2472,14 +2478,14 @@ function showAllTime(){
 function allTimePDF(){
   const rows = allTimeRows().slice().sort((a,b)=>a.date.localeCompare(b.date)||a.ts-b.ts);
   if(!rows.length){ toast('Abhi koi entry nahi'); return; }
-  const doc = buildReport('Full Report - All Time', rows.length + ' orders', rows, allKharchaList());
+  const doc = buildReport('Full Report - All Time', rows.length + ' orders', rows, allKharchaList().concat(retKatauti(entries)));
   sharePDF(doc, 'FK-Report-ALL-' + todayStr() + '.pdf');
 }
 function monthPDF(){
   const mk = monthKey(viewMonth);
   const rows = entries.filter(e=>e.date && e.date.startsWith(mk) && !e.returned && e.kind!=='ret').slice().sort((a,b)=>a.date.localeCompare(b.date)||a.ts-b.ts);
   if(!rows.length){ toast('Is mahine ki koi entry nahi'); return; }
-  const doc = buildReport('Monthly Report: ' + MONTHS[viewMonth.getMonth()] + ' ' + viewMonth.getFullYear(), rows.length + ' orders', rows, kharcha[mk]||[]);
+  const doc = buildReport('Monthly Report: ' + MONTHS[viewMonth.getMonth()] + ' ' + viewMonth.getFullYear(), rows.length + ' orders', rows, (kharcha[mk]||[]).concat(retKatauti(entries.filter(e=>e.date && e.date.startsWith(mk)))));
   sharePDF(doc, 'FK-Report-' + mk + '.pdf');
 }
 
@@ -2584,7 +2590,7 @@ function renderHisab(){
   $('statGrid').innerHTML = `
     <div class="stat wide hero"><div class="lbl">Net Profit (batwara isi ka)</div><div class="val" style="color:${net>=0?'#7ee2ae':'#ff9b9b'}">${fmt(net)}</div><div style="font-size:.72rem;color:#9aa3ad;margin-top:2px">${sales>0?('Margin: '+(net/sales*100).toFixed(1)+'%  ·  Avg profit/order: '+fmt(rows.length?net/rows.length:0)):''}</div></div>
     <div class="stat"><div class="lbl">Orders</div><div class="val">${rows.length}</div></div>
-    <div class="stat"><div class="lbl">↩️ Return</div><div class="val" style="color:#b8860b">${retRows.length+retEnts.length}${(retRows.length+retEnts.length)?' (₹'+Math.round(retRows.reduce((a,e)=>a+e.sale,0)+retLoss).toLocaleString('en-IN')+')':''}</div></div>
+    <div class="stat"><div class="lbl">↩️ Return</div><div class="val" style="color:#b8860b">${retRows.length+retEnts.length}${retLoss?' (-₹'+Math.round(retLoss).toLocaleString('en-IN')+')':''}</div></div>
     ${retLoss>0?`<div class="stat wide" style="border-color:#b8860b;background:#fdf8ec"><div class="lbl" style="color:#8a6d0b">↩️ Return + Return cost (minus)</div><div class="val" style="color:#b8860b">- ${fmt(retLoss)}</div></div>`:''}
     <div class="stat"><div class="lbl">Total Qty</div><div class="val">${tq}</div></div>
     <div class="stat"><div class="lbl">Total Sale</div><div class="val">${fmt(sales)}</div></div>
